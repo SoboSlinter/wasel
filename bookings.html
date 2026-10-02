@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My bookings — Wasel</title>
+  <link rel="icon" href="img/logo-mark.png" type="image/png">
+  <meta name="theme-color" content="#1f6360">
+  <link rel="preload" href="css/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/vendor/supabase.js"></script>
+  <script src="js/i18n-es.js"></script>
+  <script src="js/i18n.js"></script>
+<script>document.documentElement.classList.add("has-shell");try{var t=localStorage.getItem("wasel-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body data-welcome>
+  <div id="site-header"></div>
+  <main class="narrow">
+    <h1 style="font-size:1.875rem">My bookings</h1>
+    <div id="booked" class="alert alert-ok" hidden>Booking request sent. The provider will confirm it soon.</div>
+    <div id="paid" class="alert alert-ok" hidden>Payment received. It can take a few seconds to show as Paid; refresh if it hasn't yet.</div>
+    <div id="pay-cancelled" class="alert alert-warn" hidden>Payment cancelled. You were not charged.</div>
+    <div id="tabs" class="tabs"></div>
+    <div id="list"><p class="muted loading" style="margin-top:24px">Loading…</p></div>
+  </main>
+  <div id="site-footer"></div>
+  <script type="module" src="js/bookings.js"></script>
+</body>
+</html>

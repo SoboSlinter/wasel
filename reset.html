@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose new password — Wasel</title>
+  <link rel="icon" href="img/logo-mark.png" type="image/png">
+  <meta name="theme-color" content="#1f6360">
+  <link rel="preload" href="css/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/vendor/supabase.js"></script>
+  <script src="js/i18n-es.js"></script>
+  <script src="js/i18n.js"></script>
+<script>document.documentElement.classList.add("has-shell");try{var t=localStorage.getItem("wasel-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body>
+  <div id="site-header"></div>
+  <main class="auth-box">
+    <h1 style="font-size:1.5rem">Choose a new password</h1>
+    <div id="auth-msg" hidden style="margin-top:16px"></div>
+    <form id="auth-form" data-mode="reset" style="margin-top:24px" hidden>
+      <div class="field"><label for="password">New password</label><div class="pw"><input id="password" name="password" type="password" required minlength="8" autocomplete="new-password"><button type="button" class="pw-toggle" data-toggle-pw="password" aria-pressed="false">Show</button></div><div class="hint">At least 8 characters.</div></div>
+      <div class="field"><label for="password2">Confirm new password</label><div class="pw"><input id="password2" name="password2" type="password" required minlength="8" autocomplete="new-password"><button type="button" class="pw-toggle" data-toggle-pw="password2" aria-pressed="false">Show</button></div></div>
+      <button class="btn btn-block" type="submit">Save new password</button>
+    </form>
+    <p class="muted small" style="margin-top:24px"><a class="link" href="forgot.html">Ask for a new link</a> · <a class="link" href="login.html" data-back-login>Log in</a></p>
+  </main>
+  <div id="site-footer"></div>
+  <script type="module" src="js/recover.js"></script>
+</body>
+</html>

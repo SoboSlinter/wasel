@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Services — Wasel</title>
+  <link rel="icon" href="img/logo-mark.png" type="image/png">
+  <meta name="theme-color" content="#1f6360">
+  <link rel="preload" href="css/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/vendor/supabase.js"></script>
+  <script src="js/i18n-es.js"></script>
+  <script src="js/i18n.js"></script>
+<script>document.documentElement.classList.add("has-shell");try{var t=localStorage.getItem("wasel-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body>
+  <div id="site-header"></div>
+  <main class="container page">
+    <h1>Services</h1>
+    <form id="filters" method="get" class="filters">
+      <input class="grow" name="q" placeholder="What service do you need?" aria-label="Service">
+      <input class="zip" name="place" placeholder="City or ZIP code" maxlength="60" autocomplete="off" list="place-suggestions" aria-label="City or ZIP code"><datalist id="place-suggestions"></datalist>
+      <select class="cat-select" name="category" aria-label="Category"></select>
+      <select class="cat-select" name="price" aria-label="Price">
+        <option value="">Any price</option><option value="0-50">Under $50</option><option value="50-100">$50 – $100</option>
+        <option value="100-200">$100 – $200</option><option value="200-">$200 and up</option></select>
+      <select class="cat-select" name="sort" aria-label="Sort by">
+        <option value="">Recommended</option><option value="rating">Highest rated</option><option value="price_asc">Price: low to high</option>
+        <option value="price_desc">Price: high to low</option><option value="distance">Nearest first</option><option value="new">Newest</option></select>
+      <button class="btn" type="submit">Search</button>
+    </form>
+    <div class="chips-row" id="active-filters"></div>
+    <div class="result-count muted small" id="count" aria-live="polite"></div>
+    <div id="results"><p class="muted loading">Loading…</p></div>
+  </main>
+  <div id="site-footer"></div>
+  <script type="module" src="js/services.js"></script>
+</body>
+</html>

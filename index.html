@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wasel — find trusted local services</title>
+  <link rel="icon" href="img/logo-mark.png" type="image/png">
+  <meta name="theme-color" content="#1f6360">
+  <link rel="preload" href="css/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/vendor/supabase.js"></script>
+  <script src="js/i18n-es.js"></script>
+  <script src="js/i18n.js"></script>
+<script>document.documentElement.classList.add("has-shell");try{var t=localStorage.getItem("wasel-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body>
+  <div id="site-header"></div>
+  <main>
+    <section class="hero"><div class="container hero-grid">
+      <div>
+        <div class="eyebrow">Local services in Texas</div>
+        <h1>Find trusted local services, fast and easy</h1>
+        <p>Book car detailing, home cleaning, repairs and more from providers who work in your area.</p>
+        <form action="services.html" method="get" class="search-row" role="search">
+          <div class="sbox">
+            <span class="pin" aria-hidden="true">📍</span>
+            <input class="zip" name="place" placeholder="City or ZIP code" maxlength="60" autocomplete="off" list="place-suggestions" aria-label="City or ZIP code"><datalist id="place-suggestions"></datalist>
+            <span class="sep" aria-hidden="true"></span>
+            <input class="grow" name="q" placeholder="Search for a service" aria-label="Service">
+            <button class="btn" type="submit">Search</button>
+          </div>
+        </form>
+        <div class="quick"><strong>Popular:</strong>
+          <a href="services.html?category=car_detailing">Car detailing</a>
+          <a href="services.html?category=home_cleaning">Home cleaning</a>
+          <a href="services.html?category=handyman">Handyman</a>
+          <a href="services.html?category=computer_repair">Computer repair</a>
+        </div>
+      </div>
+      <div class="bk-demo" role="img" aria-label="Example booking: Full interior detail, confirmed, $85, ready to pay">
+        <img class="hero-art" src="img/hero.jpg" alt="Cleaning, car detailing and handyman providers working outside a neighborhood home" width="291" height="239" fetchpriority="high">
+        <span class="float f1">✓ Approved provider</span>
+        <div class="bk-card">
+          <div class="bk-top"><span class="bk-ico">🚗</span><div><strong>Full interior detail</strong><small>Example · Irving, TX</small></div><span class="bk-pill">Confirmed</span></div>
+          <dl class="bk-rows"><div><dt>When</dt><dd>Sat, 10:00 AM</dd></div><div><dt>Price</dt><dd>$85.00</dd></div></dl>
+          <div class="bk-pay">Pay $85.00 by card</div>
+        </div>
+        <span class="float f2">↩ Full refund if cancelled</span>
+      </div>
+    </div></section>
+
+    <section class="block"><div class="container">
+      <h2>Book with confidence</h2>
+      <p class="sec-lead">You know who is coming, what it costs and what happens if plans change.</p>
+      <div class="tiles">
+        <div class="tile t1"><h3>Every provider is reviewed</h3><p>We approve providers before they can appear in search.</p></div>
+        <div class="tile t2"><h3>Pay after they confirm</h3><p>No payment until the provider accepts your booking.</p></div>
+        <div class="tile t3"><h3>Full refund if cancelled</h3><p>Cancel before the job starts and your money comes back.</p></div>
+        <div class="tile t4"><h3>Secure card payment</h3><p>Cards are handled by Stripe. Wasel never sees your card number.</p></div>
+      </div>
+    </div></section>
+
+    <section class="block"><div class="container">
+      <div class="sec-head"><h2>Popular services</h2><a class="link small" href="services.html">View all</a></div>
+      <div class="grid grid-4">
+        <a class="cat" href="services.html?category=car_detailing"><div class="icon" style="background:#dbeafe">🚗</div><div class="name">Car Detailing</div><div class="muted small">Wash, polish, interior</div></a>
+        <a class="cat" href="services.html?category=home_cleaning"><div class="icon" style="background:#dcfce7">🏠</div><div class="name">Home Cleaning</div><div class="muted small">Regular and deep clean</div></a>
+        <a class="cat" href="services.html?category=handyman"><div class="icon" style="background:#fef3c7">🔧</div><div class="name">Handyman</div><div class="muted small">Repairs and small jobs</div></a>
+        <a class="cat" href="services.html?category=computer_repair"><div class="icon" style="background:#ede9fe">💻</div><div class="name">Computer Repair</div><div class="muted small">Fixes and setup</div></a>
+      </div>
+    </div></section>
+
+    <section class="block soft"><div class="container">
+      <h2>How it works</h2>
+      <div class="grid grid-3">
+        <div class="step"><div class="n">1</div><h3>Search</h3><p class="muted small">Type the service you need and your city or ZIP code.</p></div>
+        <div class="step"><div class="n">2</div><h3>Choose</h3><p class="muted small">Compare local providers, prices, photos and ratings.</p></div>
+        <div class="step"><div class="n">3</div><h3>Book</h3><p class="muted small">Pick a time. The provider confirms, then you pay securely.</p></div>
+      </div>
+    </div></section>
+
+    <section><div class="container"><div class="cta-band">
+      <div><h2>Need a hand this week?</h2><p>Search by city or ZIP code and book a local provider in a few minutes. Offer a service yourself? Join as a provider.</p></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap"><a class="btn" href="services.html">Find a service</a> <a class="btn btn-outline" href="provider-signup.html">Become a provider</a></div>
+    </div></div></section>
+  </main>
+  <div id="site-footer"></div>
+  <script type="module" src="js/home.js"></script>
+</body>
+</html>
