@@ -737,3 +737,19 @@ html.has-shell main > section > .container { padding-left: 28px; padding-right: 
 .work-photos img{width:92px;height:92px;object-fit:cover;border-radius:10px;display:block}
 .work-photos figure .btn{position:absolute;top:2px;right:2px;padding:0 7px;line-height:1.4}
 .trip-box{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+
+/* ---- help assistant (js/ai-chat.js): button in the corner + chat panel ---- */
+.aichat{position:fixed;right:16px;bottom:16px;z-index:45;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.aichat-fab{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border:0;border-radius:999px;background:var(--brand-600);color:#fff;font:inherit;font-weight:600;cursor:pointer;box-shadow:0 8px 24px rgba(15,23,42,.22)}
+.aichat-fab:hover{background:var(--brand-700)}
+.aichat-panel{width:min(360px,calc(100vw - 32px));max-height:min(520px,calc(100vh - 96px));display:flex;flex-direction:column;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 36px rgba(15,23,42,.22);overflow:hidden}
+.aichat-panel[hidden]{display:none}
+.aichat-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 10px 16px;border-bottom:1px solid var(--line)}
+.aichat-list{flex:1;display:flex;flex-direction:column;gap:6px;overflow:auto;padding:12px;min-height:160px}
+.aichat-list .alert{margin-top:4px}
+.aichat .chat-msg.mine{background:var(--brand-600);color:#fff}
+.aichat-typing{opacity:.7}
+.aichat-form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+.aichat-form input{flex:1;min-width:0}
+.aichat-note{margin:0;padding:0 12px 10px;font-size:.72rem;color:var(--muted)}
+body:has(.cmp-bar:not([hidden])) .aichat{bottom:84px}

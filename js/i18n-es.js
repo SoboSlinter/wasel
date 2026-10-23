@@ -814,6 +814,19 @@ var E = {
 "Create account and apply": "Crear cuenta y solicitar",
 "Welcome back. Your details are saved. Add your ID and a license or proof of insurance to finish.": "Te damos la bienvenida de nuevo. Tus datos están guardados. Agrega tu identificación y una licencia o comprobante de seguro para terminar.",
 "Files are PDF, JPG, PNG or WebP up to 10 MB. They are stored privately: only you and Wasel administrators can open them.": "Los archivos son PDF, JPG, PNG o WebP de hasta 10 MB. Se guardan de forma privada: solo tú y los administradores de Wasel pueden abrirlos.",
+// ---- help assistant (js/ai-chat.js) ----
+"Ask Wasel": "Pregúntale a Wasel",
+"Wasel assistant": "Asistente de Wasel",
+"Close chat": "Cerrar chat",
+"Type your question": "Escribe tu pregunta",
+"Your question": "Tu pregunta",
+"Answers are written by AI and can be wrong.": "Las respuestas las escribe una IA y pueden tener errores.",
+"Hi! I can help you find a service or answer questions about booking on Wasel.": "¡Hola! Puedo ayudarte a encontrar un servicio o responder preguntas sobre cómo reservar en Wasel.",
+"Typing…": "Escribiendo…",
+"The assistant is not set up yet.": "El asistente aún no está configurado.",
+"Please type a question.": "Escribe una pregunta.",
+"The assistant is not available right now. Try again later.": "El asistente no está disponible ahora. Inténtalo más tarde.",
+"The assistant could not answer right now. Try again later.": "El asistente no pudo responder ahora. Inténtalo más tarde.",
 };
 
 var T = function (s) { return Object.prototype.hasOwnProperty.call(E, s) ? E[s] : s; };
