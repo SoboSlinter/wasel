@@ -3,6 +3,7 @@ import { icon, adoptTabs, sb, renderChrome, esc, money, formatDateTime, params, 
 
 const root = document.getElementById("admin");
 const user = await renderChrome();
+let IS_SUPER = false; // the main admin: manages admins, edits user and provider data
 
 const pill = (cls, label) => `<span class="badge ${esc(cls)}">${esc(label)}</span>`;
 const PROVIDER_LABEL = { pending: "Waiting for approval", approved: "Approved", suspended: "Suspended" };
@@ -42,19 +43,54 @@ function askReason({ title, text, confirm = "Confirm", danger = false }) {
   });
 }
 
+// A small edit form with a required reason. Resolves to { values, reason } or null if cancelled.
+function askForm({ title, text, fields, confirm = "Save" }) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.className = "reason-dialog";
+    dlg.innerHTML = `<form method="dialog" class="reason-form" novalidate>
+      <h2 style="font-size:1.125rem;margin:0 0 6px">${esc(title)}</h2>
+      <p class="small muted" style="margin:0 0 12px">${esc(text)}</p>
+      ${fields.map((f, i) => `<div class="field" style="margin-bottom:10px"><label for="af-${i}">${esc(f.label)}</label>${f.rows
+        ? `<textarea id="af-${i}" rows="${f.rows}" maxlength="${f.max ?? 500}">${esc(f.value ?? "")}</textarea>`
+        : `<input id="af-${i}" type="${f.type ?? "text"}" maxlength="${f.max ?? 200}" value="${esc(f.value ?? "")}">`}</div>`).join("")}
+      <div class="field" style="margin-bottom:10px"><label for="af-reason">Reason <span class="muted small">(saved in the activity log)</span></label><textarea id="af-reason" rows="2" maxlength="500" required minlength="5"></textarea></div>
+      <div id="af-err" class="alert alert-error" hidden></div>
+      <div class="btn-row" style="margin-top:12px;justify-content:flex-end">
+        <button type="button" class="btn btn-sm btn-outline" data-cancel>Cancel</button>
+        <button type="submit" class="btn btn-sm">${esc(confirm)}</button>
+      </div></form>`;
+    document.body.appendChild(dlg);
+    const done = (v) => { dlg.close(); dlg.remove(); resolve(v); };
+    dlg.querySelector("[data-cancel]").onclick = () => done(null);
+    dlg.addEventListener("cancel", (e) => { e.preventDefault(); done(null); });
+    dlg.querySelector("form").onsubmit = (e) => {
+      e.preventDefault();
+      const values = fields.map((f, i) => dlg.querySelector(`#af-${i}`).value.trim());
+      for (const [i, f] of fields.entries()) if (f.required && !values[i]) return showMessage(dlg.querySelector("#af-err"), `${f.label} is required.`);
+      const reason = dlg.querySelector("#af-reason").value.trim();
+      if (reason.length < 5) return showMessage(dlg.querySelector("#af-err"), "Please write a reason (at least 5 characters).");
+      done({ values, reason });
+    };
+    dlg.showModal();
+    dlg.querySelector("#af-0").focus();
+  });
+}
+
 async function init(user) {
   // The page checks the role to decide what to show. The REAL protection is in the database:
   // a non-admin cannot read other people's data or call the admin functions, whatever they do here.
-  const { data: me } = await sb.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  const { data: me } = await sb.from("profiles").select("role, is_super_admin").eq("id", user.id).maybeSingle();
   if (me?.role !== "admin") {
     root.innerHTML = `<div class="empty"><h1 style="font-size:1.5rem">Admins only</h1>
       <p>You don't have access to this page.</p><a class="link" href="admin-login.html">Admin log in</a></div>`;
     return;
   }
 
+  IS_SUPER = me?.is_super_admin === true;
   const tabParam = params().get("tab") === "approvals" ? "catalog" : params().get("tab");
-  const tab = ["overview", "providers", "catalog", "users", "bookings", "disputes", "problems", "messages", "alerts", "content", "activity", "settings"].includes(tabParam) ? tabParam : "overview";
-  const tabs = [["overview", "Overview", "dashboard"], ["providers", "Providers", "briefcase"], ["catalog", "Services", "shield"], ["users", "Users", "users"], ["bookings", "Bookings", "calendar"], ["disputes", "Disputes", "alert"], ["problems", "Problems", "wrench"], ["messages", "Messages", "mail"], ["alerts", "Alerts", "alert"], ["content", "Content", "layers"], ["activity", "Activity", "activity"], ["settings", "Settings", "settings"]];
+  const tab = ["overview", "providers", "catalog", "users", "bookings", "disputes", "problems", "messages", "alerts", "content", "activity", "settings", ...(IS_SUPER ? ["admins"] : [])].includes(tabParam) ? tabParam : "overview";
+  const tabs = [["overview", "Overview", "dashboard"], ["providers", "Providers", "briefcase"], ["catalog", "Services", "shield"], ["users", "Users", "users"], ...(IS_SUPER ? [["admins", "Admins", "shield"]] : []), ["bookings", "Bookings", "calendar"], ["disputes", "Disputes", "alert"], ["problems", "Problems", "wrench"], ["messages", "Messages", "mail"], ["alerts", "Alerts", "alert"], ["content", "Content", "layers"], ["activity", "Activity", "activity"], ["settings", "Settings", "settings"]];
   const [{ count: waiting }, { count: openDisputes }, { count: openProblems }, { count: newMessages }, { count: openAlerts }] = await Promise.all([
     sb.from("provider_profiles").select("id", { count: "exact", head: true }).eq("status", "pending"),
     sb.from("payments").select("id", { count: "exact", head: true }).eq("dispute_status", "open"),
@@ -65,7 +101,7 @@ async function init(user) {
   const badge = { providers: waiting, disputes: openDisputes, problems: openProblems, messages: newMessages, alerts: openAlerts };
   root.innerHTML = `
     <h1 style="font-size:1.875rem">Admin</h1>
-    <p class="muted" style="margin:4px 0 0">Review providers, manage people and keep an eye on bookings and payments.</p>
+    <p class="muted" style="margin:4px 0 0">Review providers, manage people and keep an eye on bookings and payments.${IS_SUPER ? ' <span class="badge admin">Main admin</span>' : ""}</p>
     <div class="dash">
       <nav class="tabs" aria-label="Admin sections">${tabs.map(([k, l, i]) => `<a class="tab ${k === tab ? "active" : ""}" href="admin.html?tab=${k}" data-tab="${k}">${icon(i)}<span>${l}</span>${badge[k] ? ` <span class="count">${badge[k]}</span>` : ""}</a>`).join("")}</nav>
       <div id="tab-body"><p class="muted loading" style="margin-top:24px">Loading…</p></div>
@@ -76,6 +112,7 @@ async function init(user) {
   if (tab === "providers") await tabProviders(body);
   if (tab === "catalog") await tabCatalog(body);
   if (tab === "users") await tabUsers(body, user);
+  if (tab === "admins") await tabAdmins(body, user);
   if (tab === "bookings") await tabBookings(body);
   if (tab === "disputes") await tabDisputes(body);
   if (tab === "problems") await tabProblems(body);
@@ -186,6 +223,19 @@ async function tabProviders(body) {
   body.addEventListener("click", async (e) => {
     const dv = e.target.closest("[data-view-doc]");
     if (dv) { const err = await openDoc(dv.dataset.viewDoc); if (err) showMessage(document.getElementById("msg"), err); return; }
+    const ep = e.target.closest("[data-edit-provider]");
+    if (ep) {
+      const p = all.find((x) => x.id === ep.closest("[data-id]").dataset.id);
+      const out = await askForm({ title: `Edit ${p.business_name}`, text: "Changes the business details customers see. The location and service areas are not changed here.",
+        fields: [{ label: "Business name", value: p.business_name ?? "", max: 120, required: true }, { label: "Description", value: p.description ?? "", rows: 4, max: 2000 },
+                 { label: "Phone", value: p.phone ?? "", max: 40, type: "tel" }, { label: "Email", value: p.email ?? "", max: 200, type: "email" }, { label: "Website", value: p.website ?? "", max: 300, type: "url" }] });
+      if (!out) return;
+      ep.disabled = true;
+      const [bn, ds, ph, em, wb] = out.values;
+      const { error } = await sb.rpc("admin_update_provider", { p_provider_id: p.id, p_business_name: bn, p_description: ds, p_phone: ph, p_email: em, p_website: wb, p_reason: out.reason });
+      if (error) { ep.disabled = false; return showMessage(document.getElementById("msg"), friendlyMessage(error.message)); }
+      return location.reload();
+    }
     const rv = e.target.closest("[data-review]");
     if (rv) {
       const card = rv.closest("[data-id]"), act = rv.dataset.review, name = card.dataset.name;
@@ -250,33 +300,68 @@ function providerCard(p) {
     ${p.status === "pending" && p.app ? `<div class="small" style="margin-top:8px"><strong>Application:</strong> ${esc(APP_LABEL[p.app.state] ?? p.app.state)}${p.app.note ? ` — “${esc(p.app.note)}”` : ""}</div>` : ""}
     <div class="btn-row" style="margin-top:16px">${p.status === "pending"
       ? `<button class="btn btn-sm" data-review="approve">Approve</button><button class="btn btn-sm btn-outline" data-review="request_info">Ask for more info</button><button class="btn btn-sm btn-danger" data-review="reject">Reject</button>`
-      : buttons.map(([to, label, cls]) => `<button class="btn btn-sm ${cls}" data-set="${to}">${label}</button>`).join("")}</div>
+      : buttons.map(([to, label, cls]) => `<button class="btn btn-sm ${cls}" data-set="${to}">${label}</button>`).join("")}${IS_SUPER ? `<button class="btn btn-sm btn-outline" data-edit-provider>Edit details</button>` : ""}</div>
   </article>`;
 }
 
 // ---------------------------------------------------------------- users
+const ROLE_LABEL = { customer: "Customer", provider: "Provider", admin: "Admin" };
+const datetime = (iso) => (iso ? formatDateTime(iso) : "never");
+
+// Everyone, with email, status and last sign-in. Falls back to the plain list if the admin upgrade SQL is not installed yet.
+async function loadUsers() {
+  const r = await sb.rpc("admin_users_overview", { p_limit: 1000 });
+  if (!r.error) return { users: r.data ?? [], full: true };
+  const old = await sb.from("profiles").select("id, full_name, phone, role, is_active, created_at").order("created_at", { ascending: false }).limit(300);
+  if (old.error) return { error: old.error };
+  return { users: old.data ?? [], full: false };
+}
+
 async function tabUsers(body, me) {
-  const { data, error } = await sb.from("profiles").select("id, full_name, phone, role, is_active, created_at").order("created_at", { ascending: false }).limit(300);
-  if (error) return (body.innerHTML = `<div class="alert alert-error">Could not load users: ${esc(friendlyMessage(error.message))}</div>`);
-  const users = data ?? [];
+  const res = await loadUsers();
+  if (res.error) return (body.innerHTML = `<div class="alert alert-error">Could not load users: ${esc(friendlyMessage(res.error.message))}</div>`);
+  const { users, full } = res;
+  let roleFilter = "all";
 
   body.innerHTML = `
-    <div class="toolbar"><input id="find" type="search" placeholder="Search by name or phone" aria-label="Search users"><span class="muted small" id="count"></span></div>
-    <p class="hint">Emails are private to the login system and are not shown here. Showing the 300 newest users.</p>
+    <div class="pills" id="role-pills">${[["all", "Everyone"], ["customer", "Customers"], ["provider", "Providers"], ["admin", "Admins"]]
+      .map(([k, l]) => `<button type="button" class="pill-link ${k === "all" ? "active" : ""}" data-role-filter="${k}">${l}</button>`).join("")}</div>
+    <div class="toolbar"><input id="find" type="search" placeholder="Search by name, email or phone" aria-label="Search users"><span class="muted small" id="count"></span></div>
+    ${full ? "" : `<div class="alert alert-warn">Emails, sign-in dates and editing need the admin upgrade (run <code>wasel-admin-upgrade.sql</code> once). Showing the basic list.</div>`}
     <div id="msg" hidden></div>
     <div id="user-list"></div>`;
 
   const list = document.getElementById("user-list");
-  const draw = (term = "") => {
-    const t = term.trim().toLowerCase();
-    const rows = users.filter((u) => !t || (u.full_name ?? "").toLowerCase().includes(t) || (u.phone ?? "").toLowerCase().includes(t));
+  const draw = () => {
+    const t = document.getElementById("find").value.trim().toLowerCase();
+    const rows = users.filter((u) => (roleFilter === "all" || u.role === roleFilter)
+      && (!t || [u.full_name, u.phone, u.email, u.business_name].some((x) => (x ?? "").toLowerCase().includes(t))));
     document.getElementById("count").textContent = `${rows.length} user${rows.length === 1 ? "" : "s"}`;
-    list.innerHTML = rows.length ? rows.map((u) => userRow(u, u.id === me.id)).join("") : `<div class="empty">No matching users.</div>`;
+    list.innerHTML = rows.length ? rows.map((u) => userRow(u, me, full)).join("") : `<div class="empty">No matching users.</div>`;
   };
   draw();
-  document.getElementById("find").addEventListener("input", (e) => draw(e.target.value));
+  document.getElementById("find").addEventListener("input", draw);
+  document.getElementById("role-pills").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-role-filter]");
+    if (!b) return;
+    roleFilter = b.dataset.roleFilter;
+    for (const x of document.querySelectorAll("#role-pills .pill-link")) x.classList.toggle("active", x === b);
+    draw();
+  });
 
   list.addEventListener("click", async (e) => {
+    const msg = document.getElementById("msg");
+    const edit = e.target.closest("[data-edit-user]");
+    if (edit) {
+      const u = users.find((x) => x.id === edit.closest("[data-id]").dataset.id);
+      const out = await askForm({ title: `Edit ${u.full_name || "this user"}`, text: "Changes the name and phone shown on their account. The email is managed by the login system and is not changed here.",
+        fields: [{ label: "Full name", value: u.full_name ?? "", max: 120, required: true }, { label: "Phone", value: u.phone ?? "", max: 40, type: "tel" }] });
+      if (!out) return;
+      edit.disabled = true;
+      const { error } = await sb.rpc("admin_update_user", { p_user_id: u.id, p_full_name: out.values[0], p_phone: out.values[1], p_reason: out.reason });
+      if (error) { edit.disabled = false; return showMessage(msg, friendlyMessage(error.message)); }
+      return location.reload();
+    }
     const act = e.target.closest("[data-active]");
     if (act) {
       const row = act.closest("[data-id]"); const on = act.dataset.active === "1"; const who = row.dataset.name || "this user";
@@ -286,33 +371,113 @@ async function tabUsers(body, me) {
       if (!reason) return;
       act.disabled = true;
       const { error } = await sb.rpc("admin_set_user_active", { p_user_id: row.dataset.id, p_active: on, p_reason: reason });
-      if (error) { act.disabled = false; return showMessage(document.getElementById("msg"), error.message); }
+      if (error) { act.disabled = false; return showMessage(msg, friendlyMessage(error.message)); }
       return location.reload();
     }
     const btn = e.target.closest("[data-save-role]");
     if (!btn) return;
     const row = btn.closest("[data-id]");
     const role = row.querySelector("select").value;
-    const msg = document.getElementById("msg");
     if (!confirm(`Change ${row.dataset.name || "this user"}'s role to "${role}"?`)) return;
     btn.disabled = true;
     const { error } = await sb.rpc("admin_set_user_role", { p_user_id: row.dataset.id, p_role: role });
-    if (error) { btn.disabled = false; return showMessage(msg, error.message); }
+    if (error) { btn.disabled = false; return showMessage(msg, friendlyMessage(error.message)); }
     location.reload();
   });
 }
 
-function userRow(u, isMe) {
-  const opts = ["customer", "provider", "admin"].map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${r}</option>`).join("");
+function userRow(u, me, full) {
+  const isMe = u.id === me.id;
+  const manageable = !isMe && !u.is_super_admin && (IS_SUPER || u.role !== "admin"); // the database enforces the same rule
+  const roles = IS_SUPER ? ["customer", "provider", "admin"] : ["customer", "provider"];
+  const opts = roles.map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLE_LABEL[r]}</option>`).join("");
+  const provider = u.provider_status ? `${pill(u.provider_status, PROVIDER_LABEL[u.provider_status] ?? u.provider_status)}` : "";
+  const meta = [u.email, u.phone || "no phone", `joined ${dateOnly(u.created_at)}`, full ? `last sign-in ${datetime(u.last_sign_in_at)}` : null,
+    full && u.role !== "admin" ? `${u.bookings_count ?? 0} booking${Number(u.bookings_count) === 1 ? "" : "s"}` : null].filter(Boolean);
   return `
   <div class="card row-card" data-id="${esc(u.id)}" data-name="${esc(u.full_name ?? "")}">
     <div class="info"><div class="name">${esc(u.full_name || "(no name)")} ${isMe ? '<span class="muted small">(you)</span>' : ""}</div>
-      <div class="muted small">${esc(u.phone || "no phone")} · joined ${esc(dateOnly(u.created_at))}</div></div>
-    ${pill(u.role, u.role)}${u.is_active === false ? pill("suspended", "Deactivated") : ""}
-    ${isMe ? `<span class="muted small">You can't change your own role</span>`
-           : `<div class="btn-row"><select aria-label="Role">${opts}</select><button class="btn btn-sm btn-outline" data-save-role>Save</button>
-              ${u.role === "admin" ? "" : u.is_active === false ? `<button class="btn btn-sm" data-active="1">Reactivate</button>` : `<button class="btn btn-sm btn-danger" data-active="0">Deactivate</button>`}</div>`}
+      <div class="muted small">${meta.map(esc).join(" · ")}</div>
+      ${u.business_name ? `<div class="small" style="margin-top:2px">Business: ${esc(u.business_name)}</div>` : ""}</div>
+    ${u.is_super_admin ? pill("admin", "Main admin") : pill(u.role, ROLE_LABEL[u.role] ?? u.role)}
+    ${provider}
+    ${u.is_active === false ? pill("suspended", "Deactivated") : pill("approved", "Active")}
+    ${full ? (u.email_confirmed ? "" : pill("pending", "Email not confirmed")) : ""}
+    <div class="btn-row">
+      ${IS_SUPER && full ? `<button class="btn btn-sm btn-outline" data-edit-user>Edit</button>` : ""}
+      ${manageable ? `<select aria-label="Role">${opts}</select><button class="btn btn-sm btn-outline" data-save-role>Save</button>
+        ${u.is_active === false ? `<button class="btn btn-sm" data-active="1">Reactivate</button>` : `<button class="btn btn-sm btn-danger" data-active="0">Deactivate</button>`}`
+        : `<span class="muted small">${isMe ? "You can't change your own account" : u.is_super_admin ? "The main admin can't be changed" : "Only the main admin can manage admins"}</span>`}
+    </div>
   </div>`;
+}
+
+// ---------------------------------------------------------------- admins (main admin only)
+const INVITE_LABEL = { active: ["approved", "Active"], used: ["completed", "Used"], revoked: ["declined", "Cancelled"], expired: ["draft", "Expired"] };
+
+async function tabAdmins(body, me) {
+  const [inv, ov] = await Promise.all([sb.rpc("admin_list_invites"), sb.rpc("admin_users_overview", { p_limit: 1000 })]);
+  if (inv.error || ov.error) return (body.innerHTML = `<div class="alert alert-error">Could not load admins: ${esc(friendlyMessage((inv.error || ov.error).message))}. Make sure <code>wasel-admin-upgrade.sql</code> was run.</div>`);
+  const admins = (ov.data ?? []).filter((u) => u.role === "admin");
+  const invites = inv.data ?? [];
+
+  body.innerHTML = `
+    <section class="panel">
+      <h2>Invite a new admin</h2>
+      <p class="small muted">Create a one-time code and give it to the person. On the <strong>Admin log in</strong> page they choose “I have an invite code”, fill the form and confirm their email. Each code works once and then stops working.</p>
+      <form id="invite-form" class="toolbar" style="margin-top:12px">
+        <input id="inv-note" type="text" maxlength="120" placeholder="Who is it for? (optional note)" aria-label="Note">
+        <select id="inv-days" aria-label="Valid for">${[[1, "1 day"], [3, "3 days"], [7, "7 days"], [14, "14 days"], [30, "30 days"]].map(([d, l]) => `<option value="${d}" ${d === 7 ? "selected" : ""}>Valid ${l}</option>`).join("")}</select>
+        <button class="btn" type="submit">Create invite code</button>
+      </form>
+      <div id="inv-msg" hidden></div>
+      <div id="inv-code" hidden></div>
+    </section>
+    <h2 class="section-title" style="margin-top:28px">Invite codes</h2>
+    <div id="inv-list">${invites.length ? invites.map(inviteRow).join("") : `<div class="empty">No invite codes yet.</div>`}</div>
+    <h2 class="section-title" style="margin-top:28px">Current admins (${admins.length})</h2>
+    ${admins.map((u) => `<div class="card row-card"><div class="info"><div class="name">${esc(u.full_name || "(no name)")}${u.id === me.id ? ' <span class="muted small">(you)</span>' : ""}</div>
+      <div class="muted small">${[u.email, `last sign-in ${datetime(u.last_sign_in_at)}`].map(esc).join(" · ")}</div></div>
+      ${u.is_super_admin ? pill("admin", "Main admin") : pill("admin", "Admin")}${u.is_active ? pill("approved", "Active") : pill("suspended", "Deactivated")}</div>`).join("")}
+    <p class="hint">To remove an admin or change their details, open the Users tab. Only you, the main admin, can do that.</p>`;
+
+  const msg = document.getElementById("inv-msg"), codeBox = document.getElementById("inv-code");
+  document.getElementById("invite-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showMessage(msg, ""); codeBox.hidden = true;
+    const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
+    const { data, error } = await sb.rpc("admin_create_invite", { p_note: document.getElementById("inv-note").value.trim() || null, p_days: Number(document.getElementById("inv-days").value) });
+    btn.disabled = false;
+    if (error) return showMessage(msg, friendlyMessage(error.message));
+    codeBox.hidden = false;
+    codeBox.className = "alert alert-ok";
+    codeBox.innerHTML = `<div class="small"><strong>Copy this code now.</strong> It is shown only once and works for one person.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><code id="inv-code-text" style="font-size:1.05rem;word-break:break-all">${esc(data.code)}</code><button type="button" class="btn btn-sm btn-outline" id="copy-code">Copy</button></div>
+      <div class="small muted" style="margin-top:6px">Valid until ${esc(formatDateTime(data.expires_at))}</div>`;
+    document.getElementById("copy-code").onclick = async (ev) => {
+      try { await navigator.clipboard.writeText(data.code); ev.target.textContent = "Copied"; } catch { ev.target.textContent = "Select and copy it by hand"; }
+    };
+    document.getElementById("inv-note").value = "";
+    const list = await sb.rpc("admin_list_invites");
+    if (!list.error) document.getElementById("inv-list").innerHTML = (list.data ?? []).map(inviteRow).join("");
+  });
+
+  document.getElementById("inv-list").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-revoke]");
+    if (!b) return;
+    if (!confirm("Cancel this invite code? It will stop working immediately.")) return;
+    b.disabled = true;
+    const { error } = await sb.rpc("admin_revoke_invite", { p_id: b.dataset.revoke });
+    if (error) { b.disabled = false; return showMessage(msg, friendlyMessage(error.message)); }
+    location.reload();
+  });
+}
+
+function inviteRow(i) {
+  const [cls, label] = INVITE_LABEL[i.status] ?? ["draft", i.status];
+  return `<div class="card row-card"><div class="info"><div class="name">${esc(i.note || "Invite code")}</div>
+    <div class="muted small">${[`created ${dateOnly(i.created_at)}`, i.status === "used" ? `used by ${i.used_by_name || "a new admin"}` : `valid until ${dateOnly(i.expires_at)}`].map(esc).join(" · ")}</div></div>
+    ${pill(cls, label)}${i.status === "active" ? `<button class="btn btn-sm btn-danger" data-revoke="${esc(i.id)}">Cancel code</button>` : ""}</div>`;
 }
 
 // ---------------------------------------------------------------- bookings

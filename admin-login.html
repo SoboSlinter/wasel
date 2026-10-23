@@ -8,10 +8,11 @@
   <meta name="theme-color" content="#1f6360">
   <link rel="preload" href="css/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/glass.css">
   <script src="js/vendor/supabase.js"></script>
   <script src="js/i18n-es.js"></script>
   <script src="js/i18n.js"></script>
-<script>document.documentElement.classList.add("has-shell");try{var t=localStorage.getItem("wasel-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<script>document.documentElement.classList.add("has-shell");try{var t=localStorage.getItem("wasel-theme");if(t)document.documentElement.dataset.theme=t;document.documentElement.classList.toggle("glass-light",t?t!=="dark":!matchMedia("(prefers-color-scheme: dark)").matches)}catch(e){}</script>
 </head>
 <body>
   <div id="site-header"></div>
@@ -27,8 +28,22 @@
       <div id="auth-extra" style="margin-top:12px"></div>
       <button class="btn btn-block" type="submit" style="margin-top:16px">Log in</button>
     </form>
+    <details class="join" id="join-box" style="margin-top:28px">
+      <summary class="link">I have an invite code — create an admin account</summary>
+      <p class="muted small" style="margin:12px 0 0">Invite codes are given by the main admin, work once and expire. Without a valid code no account is created.</p>
+      <form id="join-form" style="margin-top:16px" novalidate>
+        <div class="field"><label for="j-name">Full name</label><input id="j-name" name="name" type="text" required maxlength="120" autocomplete="name"></div>
+        <div class="field"><label for="j-email">Email</label><input id="j-email" name="email" type="email" required autocomplete="email"></div>
+        <div class="field"><label for="j-pass">Password</label><div class="pw"><input id="j-pass" name="password" type="password" required minlength="8" autocomplete="new-password"><button type="button" class="pw-toggle" data-toggle-pw="j-pass" aria-pressed="false">Show</button></div><p class="hint">At least 8 characters.</p></div>
+        <div class="field"><label for="j-pass2">Confirm password</label><input id="j-pass2" name="password2" type="password" required minlength="8" autocomplete="new-password"></div>
+        <div class="field"><label for="j-code">Invite code</label><input id="j-code" name="code" type="text" required autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="WASEL-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX"></div>
+        <div id="join-msg" hidden></div>
+        <button class="btn btn-block" type="submit" style="margin-top:16px">Create admin account</button>
+      </form>
+    </details>
   </main>
   <div id="site-footer"></div>
   <script type="module" src="js/auth.js"></script>
+  <script type="module" src="js/admin-join.js"></script>
 </body>
 </html>

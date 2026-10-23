@@ -423,6 +423,12 @@ async function tabServices(provider, body) {
   });
 
   // ----- upload photos (file picker)
+  body.addEventListener("click", (e) => {
+    const pick = e.target.closest("[data-pick]");
+    if (!pick) return;
+    const row = pick.closest(".upload-row");
+    row.querySelector(pick.dataset.pick === "camera" ? "[data-camera-input]" : "[data-files-input]")?.click();
+  });
   body.addEventListener("change", async (e) => {
     const input = e.target.closest("[data-upload]");
     if (!input) return;
@@ -529,8 +535,11 @@ function serviceCard(s) {
           <button type="button" class="del" data-photo-act="delete">Delete</button></div>
       </div>`).join("")}</div>
     <div class="upload-row">
-      <label class="small muted">Photos (${photos.length}/${MAX_PHOTOS}) ·
-        <input type="file" data-upload accept="image/*" multiple ${full ? "disabled" : ""} aria-label="Add photos to ${esc(s.name)}"></label>
+      <span class="small muted">Photos (${photos.length}/${MAX_PHOTOS})</span>
+      <button type="button" class="btn btn-sm btn-outline" data-pick="files" ${full ? "disabled" : ""}>Choose from files</button>
+      <button type="button" class="btn btn-sm btn-outline" data-pick="camera" ${full ? "disabled" : ""}>Take a photo</button>
+      <input type="file" data-upload data-files-input accept="image/*" multiple hidden ${full ? "disabled" : ""} aria-label="Add photos to ${esc(s.name)} from your files">
+      <input type="file" data-upload data-camera-input accept="image/*" capture="environment" hidden ${full ? "disabled" : ""} aria-label="Take a photo for ${esc(s.name)}">
     </div>
     <div class="photo-msg" hidden></div>
     <form class="price-form" style="margin-top:16px">

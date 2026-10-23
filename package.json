@@ -1,0 +1,19 @@
+{
+  "name": "wasel-mvp",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Wasel \u2014 plain HTML/CSS/JavaScript front end on Supabase. npm is only used for dev helpers.",
+  "scripts": {
+    "start": "serve -l 3000 .",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:status": "supabase status",
+    "db:test": "node scripts/run-db-test.mjs",
+    "env:local": "node scripts/write-local-env.mjs"
+  },
+  "devDependencies": {
+    "serve": "^14.2.0",
+    "supabase": "^2.119.0"
+  }
+}

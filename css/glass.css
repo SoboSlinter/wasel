@@ -1,0 +1,145 @@
+/* Wasel — Pastel Glass (glass-light) skin.
+   Loaded after style.css. Applies only when <html> has .glass-light (light mode);
+   dark mode keeps its own look from style.css. Remove this file + the class to go back. */
+
+html.glass-light{
+  color-scheme:light;
+  --bg:linear-gradient(160deg,#dfeafc,#c9dcf7 55%,#e8f1ff);
+  --surf:rgba(255,255,255,.58);
+  --border:rgba(255,255,255,.85);
+  --text:#0b1230; --text-2:#34425f; --muted:#5a6988;
+  --accent:#2f6df0; --accent2:#5b3df0;
+  --primary:#2f6df0; --brand-50:#eaf1ff; --brand-100:#dbe7ff; --brand-500:#2f6df0;
+  --brand-600:#2f6df0; --brand-700:#2557c9; --brand-900:#0b1230;
+  --background:#dfeafc; --bg-soft:#dfeafc; --surface:rgba(255,255,255,.58);
+  --line:rgba(120,140,190,.28); --tint:rgba(47,109,240,.09); --ring:#8fb0ff;
+  --side-bg:rgba(255,255,255,.5);
+  --grad-accent:linear-gradient(135deg,#2f6df0 0%,#5b3df0 100%);
+  --side-active:linear-gradient(135deg,#2f6df0,#5b3df0);
+  --glow:0 8px 18px rgba(47,109,240,.32);
+  --shadow-card:0 18px 40px rgba(20,30,80,.12),inset 0 1px 0 rgba(255,255,255,.7);
+  --warm:#5b3df0;
+  --green-soft:#d9f5e6; --sky:#dbeafe; --amber:#fdf0cf; --mint:#e6f7f3;
+}
+html.glass-light body{
+  background:var(--bg) fixed; color:var(--text);
+}
+html.glass-light body::before{ /* soft pastel orbs behind the glass */
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:
+    radial-gradient(520px 360px at 8% 12%,rgba(143,176,255,.55),transparent 70%),
+    radial-gradient(480px 340px at 92% 8%,rgba(190,170,255,.45),transparent 70%),
+    radial-gradient(560px 400px at 80% 95%,rgba(150,225,240,.45),transparent 70%);
+}
+
+/* ---- glass surfaces ---- */
+html.glass-light :is(.card,.panel:not(.soft),.stat,.step,.rev,.cat,.bk-card,.float,.hero-points li,
+  .who-chip,.icon-btn,.top-search,.auth-box,.sbox,.row-card,.booking,.svc,.confirm-box,.tile,.reason-dialog,
+  section.block.soft){
+  background:var(--surf); border:1px solid var(--border);
+  -webkit-backdrop-filter:blur(18px) saturate(160%); backdrop-filter:blur(18px) saturate(160%);
+  box-shadow:var(--shadow-card);
+}
+html.glass-light :is(.card,.panel,.stat,.step,.rev,.cat,.bk-card,.auth-box,.row-card,.booking,.svc,.tile){border-radius:24px}
+html.glass-light a.card:hover,html.glass-light .cat:hover{
+  transform:translateY(-3px); box-shadow:0 22px 44px rgba(47,109,240,.2),inset 0 1px 0 #fff;
+}
+html.glass-light :is(.card,.cat){transition:transform .2s cubic-bezier(.22,.8,.3,1),box-shadow .2s}
+html.glass-light .thumb,html.glass-light .gallery .main{background:linear-gradient(135deg,#dbe7ff,#efe7ff)}
+
+/* shell */
+html.glass-light .sidebar{
+  background:var(--side-bg); border-right:1px solid var(--border);
+  -webkit-backdrop-filter:blur(22px) saturate(160%); backdrop-filter:blur(22px) saturate(160%);
+}
+html.glass-light .side-user{background:rgba(255,255,255,.6); border:1px solid var(--border)}
+html.glass-light .side-signout{border-color:var(--line)}
+html.glass-light .site-header{background:rgba(255,255,255,.5);border-bottom:1px solid var(--border);backdrop-filter:blur(18px)}
+html.glass-light .site-footer{background:transparent;border-top:1px solid var(--line)}
+html.glass-light .nav-item[aria-current="page"],
+html.glass-light .sidebar .tab.active,html.glass-light .sidebar .tab.active:hover{
+  background:var(--side-active); color:#fff; box-shadow:0 6px 16px rgba(47,109,240,.35);
+}
+html.glass-light .nav-item:hover,html.glass-light .sidebar .tab:hover{background:var(--tint)}
+html.glass-light .avatar{background:linear-gradient(135deg,#2f6df0,#5b3df0);color:#fff}
+
+/* hero + bands */
+html.glass-light .hero,html.glass-light .page-hero,
+html.glass-light.has-shell main>.hero,html.glass-light.has-shell main>.page-hero{
+  background:linear-gradient(135deg,rgba(255,255,255,.55),rgba(210,225,255,.45)); border:1px solid var(--border);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+}
+html.glass-light .hero h1 .accent,html.glass-light .accent{background:var(--grad-accent);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+html.glass-light .hero .eyebrow{background:rgba(255,255,255,.75);color:var(--accent2);border:1px solid var(--border)}
+html.glass-light .eyebrow{color:var(--accent2)}
+html.glass-light .cta-band,html.glass-light .promo,html.glass-light .stat.stat-accent{
+  background:var(--grad-accent); color:#fff; border-color:rgba(255,255,255,.35);
+  box-shadow:0 20px 44px rgba(91,61,240,.3),inset 0 1px 0 rgba(255,255,255,.5);
+}
+html.glass-light .cta-band .btn,html.glass-light .promo .btn{background:#fff;color:var(--accent2)}
+html.glass-light .cta-band .btn-outline{background:transparent;color:#fff;border-color:rgba(255,255,255,.7)}
+html.glass-light .tile.t1{background:linear-gradient(160deg,rgba(255,255,255,.7),rgba(190,205,255,.6))}
+html.glass-light .tile.t2{background:linear-gradient(160deg,rgba(255,255,255,.7),rgba(180,225,250,.6))}
+html.glass-light .tile.t3{background:linear-gradient(160deg,rgba(255,255,255,.7),rgba(215,195,255,.6))}
+html.glass-light .tile.t4{background:linear-gradient(160deg,rgba(255,255,255,.7),rgba(190,240,225,.6))}
+
+/* buttons */
+html.glass-light .btn{
+  border-radius:999px; border:0; color:#fff;
+  background:linear-gradient(180deg,var(--accent),var(--accent2));
+  box-shadow:0 10px 24px rgba(47,109,240,.38),inset 0 1px 0 rgba(255,255,255,.4);
+  transition:transform .2s cubic-bezier(.22,.8,.3,1),box-shadow .2s,filter .2s;
+}
+html.glass-light .btn:hover{background:linear-gradient(180deg,var(--accent),var(--accent2));transform:translateY(-2px);filter:brightness(1.06)}
+html.glass-light .btn:active:not(:disabled){background:linear-gradient(180deg,var(--accent),var(--accent2));transform:translateY(1px) scale(.98)}
+html.glass-light .btn-outline,html.glass-light .photo .cap button{
+  color:var(--text); background:rgba(255,255,255,.6); border:1px solid var(--border);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 20px rgba(20,30,80,.12);
+}
+html.glass-light .btn-outline:hover{background:rgba(255,255,255,.85)}
+html.glass-light .btn-danger{color:#b91c1c;background:rgba(255,255,255,.6);border:1px solid rgba(185,28,28,.3);box-shadow:none}
+html.glass-light .btn-danger:hover{background:#fef2f2}
+html.glass-light .pill-link.active{background:var(--grad-accent);border-color:transparent;color:#fff}
+html.glass-light .pill-link,html.glass-light .chip,html.glass-light .tag,html.glass-light .steps li{
+  background:rgba(255,255,255,.65); border:1px solid var(--border); color:var(--text-2);
+}
+html.glass-light .chip{color:var(--accent2)}
+html.glass-light .tab.active{border-color:var(--accent);color:var(--accent2)}
+html.glass-light .step .n{background:var(--grad-accent)}
+html.glass-light .steps li.on{background:var(--tint);color:var(--accent2);border-color:var(--accent)}
+html.glass-light .link,html.glass-light .logo,html.glass-light .nav a:hover{color:var(--accent2)}
+
+/* inputs */
+html.glass-light :is(input,select,textarea){
+  background:rgba(255,255,255,.7); border:1px solid var(--border); color:var(--text);
+  box-shadow:0 6px 18px rgba(80,110,180,.12);
+}
+html.glass-light :is(input,select,textarea):focus{
+  outline:0; border-color:var(--accent); box-shadow:0 0 0 3px rgba(47,109,240,.3);
+}
+html.glass-light .top-search input,html.glass-light .sbox input{background:transparent;box-shadow:none;border:0}
+html.glass-light .sbox:focus-within,html.glass-light .top-search:focus-within{box-shadow:0 0 0 3px rgba(47,109,240,.3)}
+html.glass-light :is(.btn,a,button,input,select,textarea,summary):focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+
+/* alerts keep their meaning colors, just softer */
+html.glass-light .alert{border-radius:16px;backdrop-filter:blur(10px)}
+
+/* motion + accessibility */
+@media (prefers-reduced-transparency:reduce){
+  html.glass-light *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+  html.glass-light{--surf:#f4f8ff;--side-bg:#f4f8ff}
+}
+@media (prefers-contrast:more){
+  html.glass-light{--border:#0b1230;--surf:#fff}
+  html.glass-light *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+}
+@media (prefers-reduced-motion:reduce){html.glass-light *{transition:none!important}}
+
+/* mobile: auth pages must not push the page wider than the phone */
+.auth-box,.narrow,.wide-page{min-width:0;max-width:100%}
+html.has-shell main.auth-box,html.has-shell main.narrow,html.has-shell main.wide-page{width:auto}
+.steps{flex-wrap:wrap}
+.steps li{min-width:0;flex:1 1 90px;overflow-wrap:anywhere}
+html.glass-light .steps li.done{background:var(--green-soft);color:#166534;border-color:transparent}
+html.glass-light .pw-toggle{background:rgba(255,255,255,.75);border:1px solid var(--border);border-radius:999px;padding:4px 12px;color:var(--accent2);font-weight:600;cursor:pointer}

@@ -76,15 +76,17 @@ export async function mountWorkPhotos(el, { userId, bookingId, editable = false,
     const urls = await signed(rows.map((r) => r.storage_path));
     el.innerHTML = `${rows.length || editable ? `<div class="small" style="margin-top:10px"><strong>Photos of the finished work</strong>${editable ? ` <span class="muted">(add at least one before you mark the job completed)</span>` : ""}</div>` : ""}
       ${rows.length ? `<div class="work-photos">${rows.map((r) => `<figure data-id="${esc(r.id)}" data-path="${esc(r.storage_path)}"><a href="${esc(urls.get(r.storage_path) ?? "#")}" target="_blank" rel="noopener"><img src="${esc(urls.get(r.storage_path) ?? "")}" alt="Photo of the finished work" loading="lazy"></a>${editable ? `<button type="button" class="btn btn-sm btn-danger" data-wp="del" aria-label="Remove photo">×</button>` : ""}</figure>`).join("")}</div>` : ""}
-      ${editable ? `<div class="doc-add"><input type="file" accept="image/jpeg,image/png,image/webp" multiple data-wp-file aria-label="Choose photos of the work"><button type="button" class="btn btn-sm" data-wp="add">Upload photos</button></div><div class="wp-msg" hidden></div>` : ""}`;
+      ${editable ? `<div class="doc-add"><input type="file" accept="image/jpeg,image/png,image/webp" multiple data-wp-file aria-label="Choose photos of the work"><button type="button" class="btn btn-sm" data-wp="add">Upload photos</button><button type="button" class="btn btn-sm btn-outline" data-wp="camera">Take a photo</button><input type="file" accept="image/*" capture="environment" hidden data-wp-cam aria-label="Take a photo of the work"></div><div class="wp-msg" hidden></div>` : ""}`;
   }
   await draw();
   if (!editable) return;
+  el.addEventListener("change", (e) => { if (e.target.matches("[data-wp-cam]") && e.target.files.length) el.querySelector('[data-wp="add"]').click(); });
   el.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-wp]"); if (!b) return;
     const msg = el.querySelector(".wp-msg");
+    if (b.dataset.wp === "camera") { el.querySelector("[data-wp-cam]").click(); return; }
     if (b.dataset.wp === "add") {
-      const files = [...el.querySelector("[data-wp-file]").files];
+      const files = [...el.querySelector("[data-wp-file]").files, ...el.querySelector("[data-wp-cam]").files];
       if (!files.length) return showMessage(msg, "Choose a photo first.");
       b.disabled = true;
       for (const file of files) {
@@ -97,6 +99,7 @@ export async function mountWorkPhotos(el, { userId, bookingId, editable = false,
           if (error) { await sb.storage.from(WORK_BUCKET).remove([path]); throw new Error(error.message); }
         } catch (err) { b.disabled = false; await draw(); onChange?.(); return showMessage(el.querySelector(".wp-msg"), friendlyMessage(err.message)); }
       }
+      el.querySelectorAll("[data-wp-file],[data-wp-cam]").forEach((i) => { i.value = ""; });
       await draw(); onChange?.();
     }
     if (b.dataset.wp === "del") {

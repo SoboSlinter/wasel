@@ -127,6 +127,7 @@ function setupThemeToggle() {
   btn.addEventListener("click", () => {
     const next = currentTheme() === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
+    document.documentElement.classList.toggle("glass-light", next !== "dark");
     try { localStorage.setItem("wasel-theme", next); } catch { /* private mode: still works for this visit */ }
     label();
   });
@@ -253,10 +254,6 @@ export async function renderChrome() {
 
   if (!configured) {
     notes.insertAdjacentHTML("beforeend", `<div class="alert alert-warn">Supabase is not configured yet. Open <code>js/config.js</code> and add your project URL and publishable key.</div>`);
-  }
-  // Help assistant for visitors and customers (not on the provider and admin dashboards).
-  if (configured && (!user || role === "customer")) {
-    import("./ai-chat.js").then((m) => m.mountAiChat(), () => { /* the site works without it */ });
   }
   return user;
 }
