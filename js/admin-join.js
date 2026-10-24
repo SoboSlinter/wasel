@@ -1,4 +1,4 @@
-import { sb, showMessage } from "./app.js";
+import { sb, showMessage, showOutcome } from "./app.js";
 
 // Admin log in page: "I have an invite code". The code is checked first, then sent with the sign-up.
 // The database is the real gatekeeper: without a valid, unused, unexpired code the account is not created.
@@ -33,20 +33,31 @@ if (form) {
 
     const { data: valid, error: checkErr } = await sb.rpc("check_admin_invite", { p_code: code });
     if (checkErr) { reset(); return showMessage(msg, err(checkErr)); }
-    if (!valid) { reset(); return showMessage(msg, "This invite code is not valid. It may have been used, cancelled or expired. Ask the main admin for a new one."); }
+    if (!valid) {
+      reset(); showMessage(msg, "This invite code is not valid. It may have been used, cancelled or expired. Ask the main admin for a new one.");
+      return showOutcome({ ok: false, title: "Sorry, this invite code did not work", text: "It may have been used, cancelled or expired. Ask the main admin for a new one." });
+    }
 
     const target = new URL("admin-login.html", location.href); target.searchParams.set("confirmed", "1");
     const { data, error } = await sb.auth.signUp({
       email, password,
       options: { data: { full_name: name, lang: window.waselLang === "es" ? "es" : "en", admin_invite: code }, emailRedirectTo: target.href },
     });
-    if (error) { reset(); return showMessage(msg, err(error)); }
+    if (error) {
+      reset(); showMessage(msg, err(error));
+      return showOutcome({ ok: false, title: "Sorry, we could not create your admin account", text: `${err(error)} Please try again, or ask the main admin for a new invite code.` });
+    }
     if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
       reset();
-      return showMessage(msg, "An account with this email already exists. Log in above instead, or use “Forgot password”.");
+      showMessage(msg, "An account with this email already exists. Log in above instead, or use “Forgot password”.");
+      return showOutcome({ ok: false, title: "Sorry, we could not create your admin account", text: "An account with this email already exists. Log in above instead, or use “Forgot password”." });
     }
-    if (data.session) return location.assign("admin.html"); // email confirmation is off: already signed in
+    if (data.session) { // email confirmation is off: already signed in
+      await showOutcome({ ok: true, title: "Your admin account was created successfully", text: "Welcome to the Wasel team. We are taking you to the dashboard." });
+      return location.assign("admin.html");
+    }
     for (const el of form.querySelectorAll(".field, button[type=submit]")) el.hidden = true;
     showMessage(msg, `We sent a confirmation link to ${email}. Click it, then log in above with your new admin account.`, "ok");
+    showOutcome({ ok: true, wait: false, title: "Your admin account was created successfully", text: `One last step: we sent a confirmation link to ${email}. Click it, then log in above with your new admin account.` });
   });
 }

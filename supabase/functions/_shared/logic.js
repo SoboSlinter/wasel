@@ -183,6 +183,7 @@ export async function connectOnboard(req, { env, getUser, fetch: f = fetch }) {
   try { [row] = await rpc(env, "payout_account_for_user", { p_user_id: user.id }, f); }
   catch (e) { return json({ error: e.message }, 400, c); }
 
+  if (!env.STRIPE_SECRET_KEY) return json({ error: "Payouts are not available yet. Wasel is still setting up payments." }, 503, c);
   try {
     let accountId = row.stripe_account_id;
     if (refresh) {
@@ -265,6 +266,7 @@ export async function subscriptionCheckout(req, { env, getUser, fetch: f = fetch
   try { [row] = await rpc(env, "subscription_context", { p_user_id: user.id }, f); }
   catch (e) { return json({ error: e.message }, 400, c); }
 
+  if (!env.STRIPE_SECRET_KEY) return json({ error: "Wasel Pro is not available yet. Wasel is still setting up payments." }, 503, c);
   try {
     let customer = row.stripe_customer_id;
     if (manage) {

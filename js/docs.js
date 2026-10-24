@@ -1,6 +1,7 @@
 // Private documents (ID, license, insurance, service papers). Stored in the PRIVATE bucket "provider-docs":
 // only the owner and the admins can open them (through short-lived signed links).
 import { sb, esc, friendlyMessage, showMessage } from "./app.js";
+import { photoFromCamera, setInputFile } from "./capture.js";
 
 export const DOC_BUCKET = "provider-docs";
 export const MAX_DOC_BYTES = 10 * 1024 * 1024;
@@ -32,6 +33,24 @@ export async function uploadDoc(userId, providerId, { kind, serviceId = null, fi
   return "";
 }
 
+// same as uploadDoc, but also returns the new document's id: { error, id }
+export async function uploadDocWithId(userId, providerId, { kind, file }) {
+  const bad = checkFile(file);
+  if (bad) return { error: bad };
+  const path = `${userId}/${kind}/${crypto.randomUUID()}-${safeName(file.name)}`;
+  const up = await sb.storage.from(DOC_BUCKET).upload(path, file, { contentType: file.type, upsert: false });
+  if (up.error) return { error: friendlyMessage(up.error.message) };
+  const { data, error } = await sb.from("provider_documents").insert({
+    provider_id: providerId, service_id: null, kind, storage_path: path, file_name: file.name.slice(0, 150), size_bytes: file.size,
+  }).select("id").single();
+  if (error) { await sb.storage.from(DOC_BUCKET).remove([path]); return { error: friendlyMessage(error.message) }; }
+  return { id: data.id, path };
+}
+export async function removeDocById(id, path) {
+  await sb.from("provider_documents").delete().eq("id", id);
+  if (path) await sb.storage.from(DOC_BUCKET).remove([path]);
+}
+
 // opens a private document in a new tab through a signed link that expires in 10 minutes
 export async function openDoc(path) {
   const w = window.open("about:blank", "_blank");
@@ -60,10 +79,11 @@ export async function mountDocs(el, { userId, providerId, serviceId = null, kind
         : `<p class="muted small" style="margin:0 0 8px">No documents uploaded yet.</p>`}
       <div class="doc-add">
         ${kinds.length > 1 ? `<select data-doc-kind aria-label="Document type">${kinds.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select>` : ""}
-        <input type="file" data-doc-file accept="application/pdf,image/jpeg,image/png,image/webp" aria-label="Choose a document">
+        <input type="file" data-doc-file accept="application/pdf,image/jpeg,image/png,image/webp" aria-label="Choose a document from your files">
+        <button type="button" class="btn btn-sm btn-outline" data-doc="camera">Take a photo</button>
         <button type="button" class="btn btn-sm" data-doc="add">Upload</button>
       </div>
-      <p class="hint" style="margin:6px 0 0">PDF or photo, up to 10 MB each. Only you and the Wasel admins can open your documents.</p>
+      <p class="hint" style="margin:6px 0 0">PDF or photo, up to 10 MB each: choose a file or take a photo with your camera. Only you and the Wasel admins can open your documents.</p>
       <div class="doc-msg" hidden></div>`;
   }
   await draw();
@@ -83,6 +103,11 @@ export async function mountDocs(el, { userId, providerId, serviceId = null, kind
       await sb.storage.from(DOC_BUCKET).remove([li.dataset.path]);
       await draw(); onChange?.();
     }
+    if (b.dataset.doc === "camera") {
+      const f = await photoFromCamera((t) => showMessage(msg, t, "warn"));
+      if (f) { setInputFile(el.querySelector("[data-doc-file]"), f, { fire: false }); showMessage(msg, "Photo ready. Press Upload to save it.", "ok"); }
+      return;
+    }
     if (b.dataset.doc === "add") {
       const file = el.querySelector("[data-doc-file]").files[0];
       const kind = serviceId ? "service" : (el.querySelector("[data-doc-kind]")?.value ?? kinds[0][0]);
@@ -96,34 +121,42 @@ export async function mountDocs(el, { userId, providerId, serviceId = null, kind
 }
 
 // For the register form: documents are picked first and uploaded after the profile exists.
-export function mountDocQueue(el, kinds = PROVIDER_KINDS) {
+export function mountDocQueue(el, kinds = PROVIDER_KINDS, { max = 8, hint = "" } = {}) {
   const items = []; // { kind, file }
   const draw = () => {
     el.innerHTML = `
       ${items.length ? `<ul class="doc-list">${items.map((it, i) => `<li><span class="doc-kind">${esc(KIND_LABEL[it.kind])}</span><span class="doc-name">${esc(it.file.name)} <span class="muted small">· ${esc(sizeText(it.file.size))}</span></span><button type="button" class="btn btn-sm btn-danger" data-q="${i}">Remove</button></li>`).join("")}</ul>` : ""}
       <div class="doc-add">
         <select data-q-kind aria-label="Document type">${kinds.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select>
-        <input type="file" data-q-file accept="application/pdf,image/jpeg,image/png,image/webp" aria-label="Choose a document">
+        <input type="file" data-q-file accept="application/pdf,image/jpeg,image/png,image/webp" aria-label="Choose a document from your files">
+        <button type="button" class="btn btn-sm btn-outline" data-q="camera">Take a photo</button>
         <button type="button" class="btn btn-sm" data-q="add">Add</button>
       </div>
-      <p class="hint" style="margin:6px 0 0">PDF or photo, up to 10 MB each.</p>
+      <p class="hint" style="margin:6px 0 0">PDF or photo, up to 10 MB each: choose a file or take a photo with your camera.${hint ? " " + esc(hint) : ""}</p>
       <div class="doc-msg" hidden></div>`;
   };
   draw();
-  el.addEventListener("click", (e) => {
+  el.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-q]");
     if (!b) return;
+    if (b.dataset.q === "camera") {
+      const m = el.querySelector(".doc-msg");
+      const f = await photoFromCamera((t) => showMessage(m, t, "warn"));
+      if (f) { setInputFile(el.querySelector("[data-q-file]"), f, { fire: false }); showMessage(m, "Photo ready. Press Add to include it.", "ok"); }
+      return;
+    }
     if (b.dataset.q === "add") {
       const file = el.querySelector("[data-q-file]").files[0];
       const bad = checkFile(file);
       if (bad) return showMessage(el.querySelector(".doc-msg"), bad);
-      if (items.length >= 8) return showMessage(el.querySelector(".doc-msg"), "You can upload up to 8 documents.");
+      if (items.length >= max) return showMessage(el.querySelector(".doc-msg"), `You can add up to ${max} documents.`);
       items.push({ kind: el.querySelector("[data-q-kind]").value, file });
       draw();
     } else { items.splice(Number(b.dataset.q), 1); draw(); }
   });
   return {
     items: () => items.slice(),
+    clear: () => { items.length = 0; draw(); },
     // what is still missing for an application the admin can approve
     missing: () => [
       items.some((i) => i.kind === "id") ? null : "your ID",

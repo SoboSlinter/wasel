@@ -4,6 +4,20 @@ import { icon, adoptTabs, sb, renderChrome, esc, money, formatDateTime, params, 
 const root = document.getElementById("admin");
 const user = await renderChrome();
 let IS_SUPER = false; // the main admin: manages admins, edits user and provider data
+let PERMS = new Set(); // what this admin may open (the database enforces it too)
+const can = (p) => IS_SUPER || PERMS.has(p);
+const PERM_LABEL = {
+  providers: "Providers (review, suspend)", catalog: "Services list", users: "Users", bookings: "Bookings and payments",
+  disputes: "Disputes", problems: "Problems", messages: "Messages", alerts: "Rating alerts",
+  content: "Content (hide services, remove reviews)", activity: "Activity log", settings: "Fees and settings",
+  data: "Backup, export and import",
+};
+const PRESETS = {
+  Manager: ["providers", "catalog", "users", "bookings", "disputes", "problems", "messages", "alerts", "content", "activity", "settings"],
+  Support: ["messages", "users", "bookings", "problems"],
+  Reviewer: ["providers", "catalog", "alerts", "content"],
+  Finance: ["bookings", "disputes", "problems", "settings", "activity"],
+};
 
 const pill = (cls, label) => `<span class="badge ${esc(cls)}">${esc(label)}</span>`;
 const PROVIDER_LABEL = { pending: "Waiting for approval", approved: "Approved", suspended: "Suspended" };
@@ -51,7 +65,9 @@ function askForm({ title, text, fields, confirm = "Save" }) {
     dlg.innerHTML = `<form method="dialog" class="reason-form" novalidate>
       <h2 style="font-size:1.125rem;margin:0 0 6px">${esc(title)}</h2>
       <p class="small muted" style="margin:0 0 12px">${esc(text)}</p>
-      ${fields.map((f, i) => `<div class="field" style="margin-bottom:10px"><label for="af-${i}">${esc(f.label)}</label>${f.rows
+      ${fields.map((f, i) => `<div class="field" style="margin-bottom:10px"><label for="af-${i}">${esc(f.label)}</label>${f.options
+        ? `<select id="af-${i}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(f.value) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`
+        : f.rows
         ? `<textarea id="af-${i}" rows="${f.rows}" maxlength="${f.max ?? 500}">${esc(f.value ?? "")}</textarea>`
         : `<input id="af-${i}" type="${f.type ?? "text"}" maxlength="${f.max ?? 200}" value="${esc(f.value ?? "")}">`}</div>`).join("")}
       <div class="field" style="margin-bottom:10px"><label for="af-reason">Reason <span class="muted small">(saved in the activity log)</span></label><textarea id="af-reason" rows="2" maxlength="500" required minlength="5"></textarea></div>
@@ -80,7 +96,7 @@ function askForm({ title, text, fields, confirm = "Save" }) {
 async function init(user) {
   // The page checks the role to decide what to show. The REAL protection is in the database:
   // a non-admin cannot read other people's data or call the admin functions, whatever they do here.
-  const { data: me } = await sb.from("profiles").select("role, is_super_admin").eq("id", user.id).maybeSingle();
+  const { data: me } = await sb.from("profiles").select("role, is_super_admin, admin_title").eq("id", user.id).maybeSingle();
   if (me?.role !== "admin") {
     root.innerHTML = `<div class="empty"><h1 style="font-size:1.5rem">Admins only</h1>
       <p>You don't have access to this page.</p><a class="link" href="admin-login.html">Admin log in</a></div>`;
@@ -88,20 +104,38 @@ async function init(user) {
   }
 
   IS_SUPER = me?.is_super_admin === true;
+  // what this admin may open. Older databases without the permissions upgrade: everything (as before).
+  const acc = await sb.rpc("my_admin_access");
+  if (!acc.error && acc.data?.[0]) { IS_SUPER = acc.data[0].is_super === true; PERMS = new Set(acc.data[0].permissions ?? []); }
+  else PERMS = new Set(Object.keys(PERM_LABEL).filter((k) => k !== "data"));
+  const TABS = [
+    ["overview", "Overview", "dashboard", true], ["providers", "Providers", "briefcase", can("providers")],
+    ["catalog", "Services", "shield", can("catalog")], ["users", "Users", "users", can("users")],
+    ["admins", "Admins", "shield", IS_SUPER], ["bookings", "Bookings", "calendar", can("bookings")],
+    ["disputes", "Disputes", "alert", can("disputes")], ["problems", "Problems", "wrench", can("problems")],
+    ["messages", "Messages", "mail", can("messages")], ["alerts", "Alerts", "alert", can("alerts")],
+    ["content", "Content", "layers", can("content")], ["activity", "Activity", "activity", can("activity")],
+    ["contacts", "Contact info", "mail", IS_SUPER], ["settings", "Settings", "settings", can("settings") || can("data")],
+    ["profile", "My profile", "users", true],
+  ];
+  const allowed = TABS.filter((t) => t[3]);
   const tabParam = params().get("tab") === "approvals" ? "catalog" : params().get("tab");
-  const tab = ["overview", "providers", "catalog", "users", "bookings", "disputes", "problems", "messages", "alerts", "content", "activity", "settings", ...(IS_SUPER ? ["admins"] : [])].includes(tabParam) ? tabParam : "overview";
-  const tabs = [["overview", "Overview", "dashboard"], ["providers", "Providers", "briefcase"], ["catalog", "Services", "shield"], ["users", "Users", "users"], ...(IS_SUPER ? [["admins", "Admins", "shield"]] : []), ["bookings", "Bookings", "calendar"], ["disputes", "Disputes", "alert"], ["problems", "Problems", "wrench"], ["messages", "Messages", "mail"], ["alerts", "Alerts", "alert"], ["content", "Content", "layers"], ["activity", "Activity", "activity"], ["settings", "Settings", "settings"]];
+  const tab = allowed.some((t) => t[0] === tabParam) ? tabParam : "overview";
+  const tabs = allowed;
   const [{ count: waiting }, { count: openDisputes }, { count: openProblems }, { count: newMessages }, { count: openAlerts }] = await Promise.all([
-    sb.from("provider_profiles").select("id", { count: "exact", head: true }).eq("status", "pending"),
-    sb.from("payments").select("id", { count: "exact", head: true }).eq("dispute_status", "open"),
-    sb.from("bookings").select("id", { count: "exact", head: true }).eq("problem_status", "open"),
-    sb.rpc("admin_contact_messages", { p_status: "new" }).then((r) => ({ count: r.data?.length ?? 0 })),
-    sb.rpc("admin_alerts_list").then((r) => ({ count: (r.data ?? []).filter((a) => a.status === "open").length })),
+    can("providers") ? Promise.all([
+      sb.from("provider_profiles").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      sb.from("provider_change_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    ]).then(([a, b]) => ({ count: (a.count ?? 0) + (b.error ? 0 : (b.count ?? 0)) })) : { count: 0 },
+    can("bookings") || can("disputes") ? sb.from("payments").select("id", { count: "exact", head: true }).eq("dispute_status", "open") : { count: 0 },
+    can("bookings") || can("problems") ? sb.from("bookings").select("id", { count: "exact", head: true }).eq("problem_status", "open") : { count: 0 },
+    can("messages") ? sb.rpc("admin_contact_messages", { p_status: "new" }).then((r) => ({ count: r.data?.length ?? 0 })) : { count: 0 },
+    can("alerts") ? sb.rpc("admin_alerts_list").then((r) => ({ count: (r.data ?? []).filter((a) => a.status === "open").length })) : { count: 0 },
   ]);
   const badge = { providers: waiting, disputes: openDisputes, problems: openProblems, messages: newMessages, alerts: openAlerts };
   root.innerHTML = `
     <h1 style="font-size:1.875rem">Admin</h1>
-    <p class="muted" style="margin:4px 0 0">Review providers, manage people and keep an eye on bookings and payments.${IS_SUPER ? ' <span class="badge admin">Main admin</span>' : ""}</p>
+    <p class="muted" style="margin:4px 0 0">Review providers, manage people and keep an eye on bookings and payments.${IS_SUPER ? ' <span class="badge admin">Main admin</span>' : me?.admin_title ? ` <span class="badge admin">${esc(me.admin_title)}</span>` : ""}</p>
     <div class="dash">
       <nav class="tabs" aria-label="Admin sections">${tabs.map(([k, l, i]) => `<a class="tab ${k === tab ? "active" : ""}" href="admin.html?tab=${k}" data-tab="${k}">${icon(i)}<span>${l}</span>${badge[k] ? ` <span class="count">${badge[k]}</span>` : ""}</a>`).join("")}</nav>
       <div id="tab-body"><p class="muted loading" style="margin-top:24px">Loading…</p></div>
@@ -121,6 +155,8 @@ async function init(user) {
   if (tab === "content") await tabContent(body);
   if (tab === "activity") await tabActivity(body);
   if (tab === "settings") await tabSettings(body);
+  if (tab === "contacts") await tabContacts(body);
+  if (tab === "profile") await tabProfile(body, user);
 }
 
 // ---------------------------------------------------------------- overview
@@ -131,23 +167,26 @@ async function tabOverview(body) {
     const { count: n } = await q;
     return n ?? 0;
   };
+  const cB = can("bookings");
   const [users, providers, pendingProviders, services, bookings, pendingBookings] = await Promise.all([
-    count("profiles"), count("provider_profiles"), count("provider_profiles", (q) => q.eq("status", "pending")),
-    count("services"), count("bookings"), count("bookings", (q) => q.eq("status", "pending")),
+    can("users") ? count("profiles") : 0, can("providers") ? count("provider_profiles") : 0,
+    can("providers") ? count("provider_profiles", (q) => q.eq("status", "pending")) : 0,
+    can("catalog") ? count("services") : 0, cB ? count("bookings") : 0, cB ? count("bookings", (q) => q.eq("status", "pending")) : 0,
   ]);
-  const settings = await getSettings();
-  const { data: done } = await sb.from("bookings").select("service_price, platform_commission").eq("status", "completed");
+  const settings = can("settings") ? await getSettings() : null;
+  const { data: done } = cB ? await sb.from("bookings").select("service_price, platform_commission").eq("status", "completed") : { data: [] };
   const gross = (done ?? []).reduce((a, b) => a + Number(b.service_price), 0);
   const fees = (done ?? []).reduce((a, b) => a + Number(b.platform_commission), 0);
 
   // payments + status mix + latest bookings (all admin-only reads)
   const since = new Date(Date.now() - 30 * 864e5).toISOString();
+  const none = { data: [], count: 0 };
   const [{ data: pays }, { data: statusRows }, { data: recent }, { count: openDisputes }, { count: refunds30 }] = await Promise.all([
-    sb.from("payments").select("amount, created_at").eq("status", "paid").gte("created_at", since).limit(2000),
-    sb.from("bookings").select("status").limit(5000),
-    sb.from("bookings").select("id, scheduled_at, status, service_price, service:services(name), provider:provider_profiles(business_name), customer:profiles(full_name)").order("created_at", { ascending: false }).limit(5),
-    sb.from("payments").select("id", { count: "exact", head: true }).eq("dispute_status", "open"),
-    sb.from("payments").select("id", { count: "exact", head: true }).eq("status", "refunded").gte("created_at", since),
+    cB ? sb.from("payments").select("amount, created_at").eq("status", "paid").gte("created_at", since).limit(2000) : none,
+    cB ? sb.from("bookings").select("status").limit(5000) : none,
+    cB ? sb.from("bookings").select("id, scheduled_at, status, service_price, service:services(name), provider:provider_profiles(business_name), customer:profiles(full_name)").order("created_at", { ascending: false }).limit(5) : none,
+    cB || can("disputes") ? sb.from("payments").select("id", { count: "exact", head: true }).eq("dispute_status", "open") : none,
+    cB ? sb.from("payments").select("id", { count: "exact", head: true }).eq("status", "refunded").gte("created_at", since) : none,
   ]);
   const dayKey = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
   const perDay = new Map();
@@ -161,37 +200,38 @@ async function tabOverview(body) {
   const mix = {}; (statusRows ?? []).forEach((r) => { mix[r.status] = (mix[r.status] ?? 0) + 1; });
   const total = (statusRows ?? []).length || 1;
   const COLORS = { pending: "#f59e0b", confirmed: "#3b82f6", in_progress: "#6366f1", completed: "#16a34a", cancelled: "#ef4444", declined: "#94a3b8" };
-  const statusBars = Object.keys(BOOKING_LABEL).map((s) => `<div class="sbar"><span>${esc(BOOKING_LABEL[s])}</span><div><i style="width:${((mix[s] ?? 0) / total) * 100}%;background:${COLORS[s]}"></i></div><b>${mix[s] ?? 0}</b></div>`).join("");
-  const latest = (recent ?? []).length ? recent.map((b) => `<div class="sched"><strong>${esc(dateOnly(b.scheduled_at))}</strong><span>${esc(b.customer?.full_name || "Customer")} → ${esc(b.provider?.business_name ?? "Provider")} · ${esc(b.service?.name ?? "Service")}</span><b>${esc(money(b.service_price))}</b>${pill(b.status === "pending" ? "review" : b.status, BOOKING_LABEL[b.status] ?? b.status)}</div>`).join("") : `<div class="muted small">No bookings yet.</div>`;
+  const statusBars = Object.keys(BOOKING_LABEL).map((s) => `<a class="sbar" href="admin.html?tab=bookings&status=${s}" title="Open ${esc(BOOKING_LABEL[s])} bookings"><span>${esc(BOOKING_LABEL[s])}</span><div><i style="width:${((mix[s] ?? 0) / total) * 100}%;background:${COLORS[s]}"></i></div><b>${mix[s] ?? 0}</b></a>`).join("");
+  const latest = (recent ?? []).length ? recent.map((b) => `<a class="sched" href="admin.html?tab=bookings&status=${esc(b.status)}"><strong>${esc(dateOnly(b.scheduled_at))}</strong><span>${esc(b.customer?.full_name || "Customer")} → ${esc(b.provider?.business_name ?? "Provider")} · ${esc(b.service?.name ?? "Service")}</span><b>${esc(money(b.service_price))}</b>${pill(b.status === "pending" ? "review" : b.status, BOOKING_LABEL[b.status] ?? b.status)}</a>`).join("") : `<div class="empty">No bookings yet.</div>`;
 
+  // every number is a link that opens the section it comes from (only the ones this admin may open)
+  const card = (perm, href, num, lbl, extra = "") => (can(perm)
+    ? `<a class="stat stat-link ${extra}" href="${href}"><div class="num">${num}</div><div class="lbl">${lbl}</div></a>` : "");
+  const row1 = [card("users", "admin.html?tab=users", users, "Users"), card("providers", "admin.html?tab=providers", providers, "Providers"),
+    card("catalog", "admin.html?tab=catalog", services, "Services"), card("bookings", "admin.html?tab=bookings", bookings, `Bookings (${pendingBookings} pending)`)].join("");
+  const row2 = [card("bookings", "admin.html?tab=bookings&status=completed", money(gross), "Completed bookings value"),
+    card("bookings", "admin.html?tab=bookings&status=completed", money(fees), "Platform fees earned", "stat-accent")].join("");
+  const row3 = [card("bookings", "admin.html?tab=bookings", money(paid30), "Card payments, last 30 days"),
+    card("disputes", "admin.html?tab=disputes", openDisputes, "Open disputes"),
+    card("bookings", "admin.html?tab=disputes", refunds30, "Refunds, last 30 days")].join("");
   body.innerHTML = `
     ${pendingProviders ? `<div class="alert alert-warn"><strong>${pendingProviders}</strong> provider${pendingProviders > 1 ? "s are" : " is"} waiting for approval.
       <a class="link" href="admin.html?tab=providers&status=pending">Review now →</a></div>` : ""}
-    <div class="stats">
-      <div class="stat"><div class="num">${users}</div><div class="lbl">Users</div></div>
-      <div class="stat"><div class="num">${providers}</div><div class="lbl">Providers</div></div>
-      <div class="stat"><div class="num">${services}</div><div class="lbl">Services</div></div>
-      <div class="stat"><div class="num">${bookings}</div><div class="lbl">Bookings (${pendingBookings} pending)</div></div>
-    </div>
-    <div class="stats" style="grid-template-columns:repeat(2,1fr)">
-      <div class="stat"><div class="num">${money(gross)}</div><div class="lbl">Completed bookings value</div></div>
-      <div class="stat stat-accent"><div class="num">${money(fees)}</div><div class="lbl">Platform fees earned</div></div>
-    </div>
-    <div class="stats" style="grid-template-columns:repeat(3,1fr)">
-      <div class="stat"><div class="num">${money(paid30)}</div><div class="lbl">Card payments, last 30 days</div></div>
-      <div class="stat"><div class="num">${openDisputes}</div><div class="lbl"><a class="link" href="admin.html?tab=disputes">Open disputes</a></div></div>
-      <div class="stat"><div class="num">${refunds30}</div><div class="lbl">Refunds, last 30 days</div></div>
-    </div>
-    <div class="ov-grid">
+    ${row1 ? `<div class="stats">${row1}</div>` : ""}
+    ${row2 ? `<div class="stats" style="grid-template-columns:repeat(2,1fr)">${row2}</div>` : ""}
+    ${row3 ? `<div class="stats" style="grid-template-columns:repeat(3,1fr)">${row3}</div>` : ""}
+    ${!row1 && !row3 ? `<div class="panel"><h3 style="margin:0 0 6px">Welcome</h3><p class="small muted" style="margin:0">Use the tabs above. You can open: ${esc([...(IS_SUPER ? Object.values(PERM_LABEL) : [...PERMS].map((k) => PERM_LABEL[k]).filter(Boolean))].join(", ") || "your profile only")}.</p></div>` : ""}
+    ${cB ? `<div class="ov-grid">
       <div class="panel"><h3 style="margin:0 0 4px">Card payments, last 30 days</h3><p class="hint" style="margin:0 0 8px">Paid amounts by day (Dallas time).</p>${chart}</div>
-      <div class="panel"><h3 style="margin:0 0 12px">Bookings by status</h3>${statusBars}</div>
+      <div class="panel"><h3 style="margin:0 0 12px">Bookings by status</h3>${statusBars}<p class="hint" style="margin:8px 0 0">Click a status to open those bookings.</p></div>
     </div>
     <div class="panel" style="margin-top:16px"><h3 style="margin:0 0 12px">Latest bookings</h3>${latest}
-      <p style="margin:12px 0 0"><a class="link small" href="admin.html?tab=bookings">See all bookings →</a></p></div>
-    <p class="hint">Fees are calculated per booking when it is created: ${esc(pct(settings.free_fee_percent))} on the Free plan, ${esc(pct(settings.pro_fee_percent))} for Wasel Pro providers. <a class="link" href="admin.html?tab=settings">Change fees →</a></p>`;
+      <p style="margin:12px 0 0"><a class="link small" href="admin.html?tab=bookings">See all bookings →</a></p></div>` : ""}
+    ${settings ? `<p class="hint">Fees are calculated per booking when it is created: ${esc(pct(settings.free_fee_percent))} on the Free plan, ${esc(pct(settings.pro_fee_percent))} for Wasel Pro providers. <a class="link" href="admin.html?tab=settings">Change fees →</a></p>` : ""}`;
 }
 
 // ---------------------------------------------------------------- providers
+const CHANGE_LABEL = { business_name: "Business name", description: "About the business", phone: "Phone", email: "Business email", address: "Address", city: "City", state: "State", zip_code: "ZIP code", business_type: "Works as", categories: "Services offered", years_experience: "Years of experience", languages: "Languages", website: "Website", license_info: "License / insurance (private)" };
+const changeVal = (v) => v == null || v === "" || (Array.isArray(v) && !v.length) ? "(empty)" : Array.isArray(v) ? v.join(", ") : v === "company" ? "A company" : v === "individual" ? "An individual" : String(v);
 async function tabProviders(body) {
   const { data, error } = await sb
     .from("provider_profiles")
@@ -214,7 +254,17 @@ async function tabProviders(body) {
   const filters = [["pending", "Waiting"], ["approved", "Approved"], ["suspended", "Suspended"], ["all", "All"]];
   const shown = status === "all" ? all : all.filter((p) => p.status === status);
 
+  const { data: chg } = await sb.rpc("admin_change_requests", { p_status: "pending" }); // empty if 028 is not applied yet
+  const changeCard = (c) => `<article class="card" data-change="${esc(c.id)}" data-name="${esc(c.business_name)}">
+      <div class="top"><div><h3>${esc(c.business_name)}</h3><div class="muted small">Asked for a profile change · ${esc(formatDateTime(c.created_at))}</div></div>${pill("pending", "Waiting")}</div>
+      <table class="small" style="margin-top:8px;width:100%"><thead><tr><th align="left">Field</th><th align="left">Now</th><th align="left">Requested</th></tr></thead><tbody>
+        ${Object.entries(c.changes).map(([k, v]) => `<tr><td>${esc(CHANGE_LABEL[k] ?? k)}</td><td class="muted">${esc(changeVal(c.current?.[k]))}</td><td><strong>${esc(changeVal(v))}</strong></td></tr>`).join("")}</tbody></table>
+      ${c.note ? `<p class="small" style="margin:8px 0 0">Provider's note: ${esc(c.note)}</p>` : ""}
+      ${c.docs?.length ? `<div class="small" style="margin-top:8px">Supporting documents: ${c.docs.map((d) => `<button type="button" class="link" data-view-doc="${esc(d.storage_path)}">${esc(d.file_name)}</button>`).join(" · ")}</div>` : `<div class="small muted" style="margin-top:8px">No supporting documents attached.</div>`}
+      <div class="btn-row" style="margin-top:12px"><button class="btn btn-sm" data-change-act="approve">Approve and apply</button> <button class="btn btn-sm btn-danger" data-change-act="reject">Reject</button></div>
+    </article>`;
   body.innerHTML = `
+    ${chg?.length ? `<h2 class="section-title" id="change-requests">Profile change requests (${chg.length})</h2>${chg.map(changeCard).join("")}` : ""}
     <div class="pills">${filters.map(([k, l]) =>
       `<a class="pill-link ${k === status ? "active" : ""}" href="admin.html?tab=providers&status=${k}">${l} (${k === "all" ? all.length : counts(k)})</a>`).join("")}</div>
     <div id="msg" hidden></div>
@@ -235,6 +285,19 @@ async function tabProviders(body) {
       const { error } = await sb.rpc("admin_update_provider", { p_provider_id: p.id, p_business_name: bn, p_description: ds, p_phone: ph, p_email: em, p_website: wb, p_reason: out.reason });
       if (error) { ep.disabled = false; return showMessage(document.getElementById("msg"), friendlyMessage(error.message)); }
       return location.reload();
+    }
+    const ca = e.target.closest("[data-change-act]");
+    if (ca) {
+      const card = ca.closest("[data-change]"), act = ca.dataset.changeAct;
+      const note = await askReason(act === "approve"
+        ? { title: "Approve this change?", text: "The new details go live on the provider's public page right away. Add a short note for the activity log.", confirm: "Approve" }
+        : { title: "Reject this change?", text: "Tell the provider why. They see your reason on their dashboard.", confirm: "Reject", danger: true });
+      if (!note) return;
+      ca.disabled = true;
+      const { error } = await sb.rpc("admin_review_change", { p_id: card.dataset.change, p_action: act, p_note: note });
+      if (error) { ca.disabled = false; return showMessage(document.getElementById("msg"), friendlyMessage(error.message)); }
+      location.reload();
+      return;
     }
     const rv = e.target.closest("[data-review]");
     if (rv) {
@@ -415,6 +478,46 @@ function userRow(u, me, full) {
 // ---------------------------------------------------------------- admins (main admin only)
 const INVITE_LABEL = { active: ["approved", "Active"], used: ["completed", "Used"], revoked: ["declined", "Cancelled"], expired: ["draft", "Expired"] };
 
+// ---------------------------------------------------------------- permissions dialog
+// Resolves to { title, permissions, reason } or null.
+function askPermissions({ name, title = "", permissions = [] }) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.className = "reason-dialog";
+    const chosen = new Set(permissions);
+    dlg.innerHTML = `<form method="dialog" class="reason-form" novalidate>
+      <h2 style="font-size:1.125rem;margin:0 0 6px">Permissions for ${esc(name)}</h2>
+      <p class="small muted" style="margin:0 0 12px">Choose a role to fill the boxes, then adjust them. The database enforces this: a missing permission cannot be used even by calling the API directly.</p>
+      <div class="field" style="margin-bottom:10px"><label for="pm-role">Role</label>
+        <select id="pm-role"><option value="">Custom</option>${Object.keys(PRESETS).map((k) => `<option ${k === title ? "selected" : ""}>${esc(k)}</option>`).join("")}</select></div>
+      <fieldset class="perm-grid" style="border:0;padding:0;margin:0 0 10px">${Object.entries(PERM_LABEL).map(([k, l]) => `<label class="perm"><input type="checkbox" data-perm="${esc(k)}" ${chosen.has(k) ? "checked" : ""}> <span>${esc(l)}</span></label>`).join("")}</fieldset>
+      <div class="field" style="margin-bottom:10px"><label for="pm-reason">Reason <span class="muted small">(saved in the activity log)</span></label><textarea id="pm-reason" rows="2" maxlength="500" required minlength="5"></textarea></div>
+      <div id="pm-err" class="alert alert-error" hidden></div>
+      <div class="btn-row" style="margin-top:12px;justify-content:flex-end">
+        <button type="button" class="btn btn-sm btn-outline" data-cancel>Cancel</button>
+        <button type="submit" class="btn btn-sm">Save permissions</button></div></form>`;
+    document.body.appendChild(dlg);
+    const done = (v) => { dlg.close(); dlg.remove(); resolve(v); };
+    const boxes = () => [...dlg.querySelectorAll("[data-perm]")];
+    dlg.querySelector("#pm-role").onchange = (e) => {
+      const set = PRESETS[e.target.value]; if (!set) return;
+      boxes().forEach((b) => { b.checked = set.includes(b.dataset.perm); });
+    };
+    dlg.querySelector("[data-cancel]").onclick = () => done(null);
+    dlg.addEventListener("cancel", (e) => { e.preventDefault(); done(null); });
+    dlg.querySelector("form").onsubmit = (e) => {
+      e.preventDefault();
+      const reason = dlg.querySelector("#pm-reason").value.trim();
+      if (reason.length < 5) return showMessage(dlg.querySelector("#pm-err"), "Please write a reason (at least 5 characters).");
+      const perms = boxes().filter((b) => b.checked).map((b) => b.dataset.perm);
+      done({ title: dlg.querySelector("#pm-role").value || "Custom", permissions: perms, reason });
+    };
+    dlg.showModal();
+    dlg.querySelector("#pm-role").focus();
+  });
+}
+const permSummary = (perms) => (perms?.length ? perms.map((k) => PERM_LABEL[k] ?? k).join(" · ") : "No access");
+
 async function tabAdmins(body, me) {
   const [inv, ov] = await Promise.all([sb.rpc("admin_list_invites"), sb.rpc("admin_users_overview", { p_limit: 1000 })]);
   if (inv.error || ov.error) return (body.innerHTML = `<div class="alert alert-error">Could not load admins: ${esc(friendlyMessage((inv.error || ov.error).message))}. Make sure <code>wasel-admin-upgrade.sql</code> was run.</div>`);
@@ -427,6 +530,7 @@ async function tabAdmins(body, me) {
       <p class="small muted">Create a one-time code and give it to the person. On the <strong>Admin log in</strong> page they choose “I have an invite code”, fill the form and confirm their email. Each code works once and then stops working.</p>
       <form id="invite-form" class="toolbar" style="margin-top:12px">
         <input id="inv-note" type="text" maxlength="120" placeholder="Who is it for? (optional note)" aria-label="Note">
+        <select id="inv-role" aria-label="Role of the new admin">${Object.keys(PRESETS).map((k) => `<option ${k === "Support" ? "selected" : ""}>${esc(k)}</option>`).join("")}</select>
         <select id="inv-days" aria-label="Valid for">${[[1, "1 day"], [3, "3 days"], [7, "7 days"], [14, "14 days"], [30, "30 days"]].map(([d, l]) => `<option value="${d}" ${d === 7 ? "selected" : ""}>Valid ${l}</option>`).join("")}</select>
         <button class="btn" type="submit">Create invite code</button>
       </form>
@@ -437,16 +541,28 @@ async function tabAdmins(body, me) {
     <div id="inv-list">${invites.length ? invites.map(inviteRow).join("") : `<div class="empty">No invite codes yet.</div>`}</div>
     <h2 class="section-title" style="margin-top:28px">Current admins (${admins.length})</h2>
     ${admins.map((u) => `<div class="card row-card"><div class="info"><div class="name">${esc(u.full_name || "(no name)")}${u.id === me.id ? ' <span class="muted small">(you)</span>' : ""}</div>
-      <div class="muted small">${[u.email, `last sign-in ${datetime(u.last_sign_in_at)}`].map(esc).join(" · ")}</div></div>
-      ${u.is_super_admin ? pill("admin", "Main admin") : pill("admin", "Admin")}${u.is_active ? pill("approved", "Active") : pill("suspended", "Deactivated")}</div>`).join("")}
+      <div class="muted small">${[u.email, `last sign-in ${datetime(u.last_sign_in_at)}`].map(esc).join(" · ")}</div>
+      <div class="muted small">${u.is_super_admin ? "Every permission" : esc(permSummary(u.admin_permissions))}</div></div>
+      ${u.is_super_admin ? pill("admin", "Main admin") : pill("admin", u.admin_title || "Admin")}${u.is_active ? pill("approved", "Active") : pill("suspended", "Deactivated")}
+      ${!u.is_super_admin && u.id !== me.id ? `<button class="btn btn-sm btn-outline" data-perms="${esc(u.id)}">Permissions</button>` : ""}</div>`).join("")}
     <p class="hint">To remove an admin or change their details, open the Users tab. Only you, the main admin, can do that.</p>`;
+  body.querySelectorAll("[data-perms]").forEach((b) => b.addEventListener("click", async () => {
+    const u = admins.find((x) => x.id === b.dataset.perms);
+    const out = await askPermissions({ name: u.full_name || u.email, title: u.admin_title ?? "", permissions: u.admin_permissions ?? [] });
+    if (!out) return;
+    b.disabled = true;
+    const { error } = await sb.rpc("admin_set_permissions", { p_user_id: u.id, p_title: out.title, p_permissions: out.permissions, p_reason: out.reason });
+    if (error) { b.disabled = false; return showMessage(document.getElementById("inv-msg"), friendlyMessage(error.message)); }
+    await tabAdmins(body, me);
+    const m = document.getElementById("inv-msg"); showMessage(m, `Permissions saved for ${u.full_name || u.email}.`, "ok");
+  }));
 
   const msg = document.getElementById("inv-msg"), codeBox = document.getElementById("inv-code");
   document.getElementById("invite-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     showMessage(msg, ""); codeBox.hidden = true;
     const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
-    const { data, error } = await sb.rpc("admin_create_invite", { p_note: document.getElementById("inv-note").value.trim() || null, p_days: Number(document.getElementById("inv-days").value) });
+    const { data, error } = await sb.rpc("admin_create_invite", { p_note: document.getElementById("inv-note").value.trim() || null, p_days: Number(document.getElementById("inv-days").value), p_title: document.getElementById("inv-role").value, p_permissions: PRESETS[document.getElementById("inv-role").value] });
     btn.disabled = false;
     if (error) return showMessage(msg, friendlyMessage(error.message));
     codeBox.hidden = false;
@@ -475,21 +591,24 @@ async function tabAdmins(body, me) {
 
 function inviteRow(i) {
   const [cls, label] = INVITE_LABEL[i.status] ?? ["draft", i.status];
-  return `<div class="card row-card"><div class="info"><div class="name">${esc(i.note || "Invite code")}</div>
+  return `<div class="card row-card"><div class="info"><div class="name">${esc(i.note || "Invite code")}${i.title ? ` <span class="muted small">· ${esc(i.title)}</span>` : ""}</div>
     <div class="muted small">${[`created ${dateOnly(i.created_at)}`, i.status === "used" ? `used by ${i.used_by_name || "a new admin"}` : `valid until ${dateOnly(i.expires_at)}`].map(esc).join(" · ")}</div></div>
     ${pill(cls, label)}${i.status === "active" ? `<button class="btn btn-sm btn-danger" data-revoke="${esc(i.id)}">Cancel code</button>` : ""}</div>`;
 }
 
 // ---------------------------------------------------------------- bookings
 async function tabBookings(body) {
-  const { data, error } = await sb
+  const only = Object.keys(BOOKING_LABEL).includes(params().get("status")) ? params().get("status") : null;
+  let q = sb
     .from("bookings")
     .select("id, scheduled_at, status, service_price, platform_commission, provider_payout, service:services(name), provider:provider_profiles(business_name), customer:profiles(full_name)")
     .order("scheduled_at", { ascending: false })
     .limit(100);
+  if (only) q = q.eq("status", only);
+  const { data, error } = await q;
   if (error) return (body.innerHTML = `<div class="alert alert-error">Could not load bookings: ${esc(friendlyMessage(error.message))}</div>`);
   const rows = data ?? [];
-  body.innerHTML = `<p class="hint">Showing the latest 100 bookings. You can cancel one that is not finished yet: the customer is refunded in full if they paid, and both sides get an email.</p><div id="msg-bookings" class="alert" hidden></div>` +
+  body.innerHTML = `${only ? `<p class="hint">Showing <strong>${esc(BOOKING_LABEL[only])}</strong> bookings only. <a class="link" href="admin.html?tab=bookings">Show all →</a></p>` : ""}<p class="hint">Showing the latest 100 bookings. You can cancel one that is not finished yet: the customer is refunded in full if they paid, and both sides get an email.</p><div id="msg-bookings" class="alert" hidden></div>` +
     (rows.length ? rows.map((b) => `
     <div class="card row-card" data-booking="${esc(b.id)}">
       <div class="info"><div class="name">${esc(b.service?.name ?? "Service")}</div>
@@ -669,12 +788,6 @@ async function tabActivity(body) {
     </div>`).join("") : `<div class="empty">No admin actions yet.</div>`);
 }
 
-// ---------------------------------------------------------------- start (kept at the END so every const above is ready)
-if (!user) {
-  location.replace("admin-login.html");
-} else {
-  await init(user);
-}
 
 
 // ---------------------------------------------------------------- services catalog (the list providers choose from)
@@ -805,6 +918,7 @@ async function tabAlerts(body) {
 // ---------------------------------------------------------------- settings (fees and Pro price)
 async function tabSettings(body) {
   const draw = async (flash) => {
+    if (!can("settings")) { body.innerHTML = `<div id="data-box"></div>`; return mountDataTools(document.getElementById("data-box")); }
     const { data, error } = await sb.rpc("public_settings");
     if (error || !data?.[0]) return (body.innerHTML = `<div class="alert alert-error">Could not load the settings: ${esc(friendlyMessage(error?.message ?? "no data"))}</div>`);
     const s = data[0];
@@ -840,7 +954,9 @@ async function tabSettings(body) {
           <div class="field" style="align-self:end"><button class="btn" type="submit" id="policy-save">Save limits</button></div>
         </form>
         <div id="policy-err" class="alert alert-error" hidden></div>
-      </section>`;
+      </section>
+      ${can("data") ? `<div id="data-box"></div>` : ""}`;
+    if (can("data")) mountDataTools(document.getElementById("data-box"));
 
     document.getElementById("fees-form").onsubmit = async (e) => {
       e.preventDefault();
@@ -888,4 +1004,230 @@ async function tabSettings(body) {
     };
   };
   await draw();
+}
+
+
+// ---------------------------------------------------------------- my profile
+async function tabProfile(body, me) {
+  const { data: p } = await sb.from("profiles").select("full_name, phone, role, admin_title, lang").eq("id", me.id).maybeSingle();
+  const access = IS_SUPER ? "Main admin: every permission" : `${esc(p?.admin_title || "Admin")}: ${esc(permSummary([...PERMS]))}`;
+  body.innerHTML = `
+    <section class="panel">
+      <h2 style="margin:0 0 4px">My profile</h2>
+      <p class="small muted" style="margin:0 0 12px">Your name and phone are shown to the team in the activity log. Your email is your login and cannot be changed here.</p>
+      <form id="pf-form" novalidate>
+        <div class="field"><label for="pf-name">Full name</label><input id="pf-name" maxlength="80" autocomplete="name" value="${esc(p?.full_name ?? "")}" required></div>
+        <div class="field"><label for="pf-phone">Phone</label><input id="pf-phone" maxlength="30" autocomplete="tel" inputmode="tel" value="${esc(p?.phone ?? "")}"></div>
+        <div class="field"><label for="pf-email">Email</label><input id="pf-email" value="${esc(me.email ?? "")}" readonly></div>
+        <div class="field"><label>Your access</label><div class="small muted">${access}</div></div>
+        <div id="pf-msg" class="alert" hidden role="status"></div>
+        <button class="btn" type="submit" id="pf-save">Save profile</button>
+      </form>
+    </section>
+    <section class="panel" style="margin-top:16px">
+      <h3 style="margin:0 0 4px">Change password</h3>
+      <form id="pw-form" novalidate>
+        <div class="field"><label for="pw-new">New password</label><input id="pw-new" type="password" autocomplete="new-password" minlength="8"><div class="hint">At least 8 characters.</div></div>
+        <div class="field"><label for="pw-new2">Confirm new password</label><input id="pw-new2" type="password" autocomplete="new-password"></div>
+        <div id="pw-msg" class="alert" hidden role="status"></div>
+        <button class="btn" type="submit" id="pw-save">Change password</button>
+      </form>
+    </section>`;
+  document.getElementById("pf-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("pf-msg");
+    const name = document.getElementById("pf-name").value.trim(), phone = document.getElementById("pf-phone").value.trim();
+    if (name.length < 2) return showMessage(msg, "Please enter your full name.");
+    if (phone && !/^[0-9+()\-\s.]{7,25}$/.test(phone)) return showMessage(msg, "Enter a valid phone number, or leave it empty.");
+    const btn = document.getElementById("pf-save"); btn.disabled = true;
+    const { error } = await sb.from("profiles").update({ full_name: name, phone: phone || null }).eq("id", me.id);
+    btn.disabled = false;
+    if (error) return showMessage(msg, friendlyMessage(error.message));
+    showMessage(msg, "Your profile was saved.", "ok");
+  };
+  document.getElementById("pw-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("pw-msg");
+    const a = document.getElementById("pw-new").value, b = document.getElementById("pw-new2").value;
+    if (a.length < 8) return showMessage(msg, "Choose a password with at least 8 characters.");
+    if (a !== b) return showMessage(msg, "The two passwords do not match.");
+    const btn = document.getElementById("pw-save"); btn.disabled = true;
+    const { error } = await sb.auth.updateUser({ password: a });
+    btn.disabled = false;
+    if (error) return showMessage(msg, friendlyMessage(error.message));
+    document.getElementById("pw-new").value = ""; document.getElementById("pw-new2").value = "";
+    showMessage(msg, "Your password was changed.", "ok");
+  };
+}
+
+// ---------------------------------------------------------------- contact details (main admin)
+const CONTACT_KIND = { email: "Email", phone: "Phone", whatsapp: "WhatsApp", address: "Address", hours: "Opening hours", website: "Website", social: "Social media link", other: "Other" };
+async function tabContacts(body) {
+  const draw = async (flash) => {
+    const { data, error } = await sb.from("site_contacts").select("*").order("sort_order").order("created_at");
+    if (error) return (body.innerHTML = `<div class="alert alert-error">Could not load the contact details: ${esc(friendlyMessage(error.message))}</div>`);
+    const rows = data ?? [];
+    body.innerHTML = `
+      <p class="hint">These details are shown to everyone on the Contact page and in the footer. Only you, the main admin, can add, change or delete them. Every change is saved in Activity with your reason.</p>
+      <div id="ct-msg" class="alert ${flash ? "alert-ok" : ""}" ${flash ? "" : "hidden"} role="status">${esc(flash ?? "")}</div>
+      <div class="toolbar" style="margin:12px 0"><button class="btn" id="ct-add">+ Add a contact detail</button></div>
+      ${rows.length ? rows.map((c) => `<div class="card row-card" data-id="${esc(c.id)}"><div class="info"><div class="name">${esc(c.label)} <span class="muted small">· ${esc(CONTACT_KIND[c.kind] ?? c.kind)}</span></div>
+        <div class="small">${esc(c.value)}</div><div class="muted small">Order ${c.sort_order} · ${c.is_public ? "Shown on the website" : "Hidden (only you see it)"}</div></div>
+        <button class="btn btn-sm btn-outline" data-edit="${esc(c.id)}">Edit</button><button class="btn btn-sm btn-danger" data-del="${esc(c.id)}">Delete</button></div>`).join("")
+        : `<div class="empty">No contact details yet. Add an email or phone number so people can reach you.</div>`}`;
+    const fieldsFor = (c = {}) => [
+      { label: "Type", options: Object.entries(CONTACT_KIND), value: c.kind ?? "email" },
+      { label: "Label (what people see)", value: c.label ?? "", max: 60, required: true },
+      { label: "Value (email, phone, address, link…)", value: c.value ?? "", max: 200, required: true },
+      { label: "Order (0 = first)", type: "number", value: c.sort_order ?? rows.length, max: 3 },
+      { label: "Show on the website?", options: [["yes", "Yes, show it"], ["no", "No, keep it hidden"]], value: c.is_public === false ? "no" : "yes" },
+    ];
+    const save = async (id, out) => {
+      const [kind, label, value, order, vis] = out.values;
+      const { error: e } = await sb.rpc("admin_save_site_contact", { p_id: id, p_kind: kind, p_label: label, p_value: value, p_sort: Math.max(0, Math.min(999, Number(order) || 0)), p_public: vis !== "no", p_reason: out.reason });
+      if (e) return showMessage(document.getElementById("ct-msg"), friendlyMessage(e.message));
+      await draw(id ? "Contact detail updated." : "Contact detail added.");
+    };
+    document.getElementById("ct-add").onclick = async () => {
+      const out = await askForm({ title: "Add a contact detail", text: "Choose what it is and how it should appear.", fields: fieldsFor(), confirm: "Add" });
+      if (out) await save(null, out);
+    };
+    body.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", async () => {
+      const c = rows.find((x) => x.id === b.dataset.edit);
+      const out = await askForm({ title: "Edit contact detail", text: "Change anything, then save.", fields: fieldsFor(c), confirm: "Save" });
+      if (out) await save(c.id, out);
+    }));
+    body.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
+      const c = rows.find((x) => x.id === b.dataset.del);
+      const reason = await askReason({ title: `Delete “${c.label}”?`, text: "It disappears from the website right away.", confirm: "Delete", danger: true });
+      if (!reason) return;
+      const { error: e } = await sb.rpc("admin_delete_site_contact", { p_id: c.id, p_reason: reason });
+      if (e) return showMessage(document.getElementById("ct-msg"), friendlyMessage(e.message));
+      await draw("Contact detail deleted.");
+    }));
+  };
+  await draw();
+}
+
+// ---------------------------------------------------------------- backup / export / import (permission "data")
+const DATASETS = {
+  catalog: "Services list", contacts: "Contact details", settings: "Fees and alert limits",
+  providers: "Providers", services: "Provider services", users: "People (names, emails, phones)",
+  bookings: "Bookings", messages: "Contact messages",
+};
+const PERSONAL = ["users", "bookings", "messages"];            // contain personal data: off by default in backups
+const RESTORABLE = ["catalog", "contacts", "settings"];          // the only kinds that can be imported back
+const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+function saveFile(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function toCsv(rows) {
+  const keys = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  // a cell that starts with = + - @ could run as a formula in Excel: neutralise it
+  const cell = (v) => { let t = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return `"${t.replace(/"/g, '""')}"`; };
+  return [keys.map(cell).join(","), ...rows.map((r) => keys.map((k) => cell(r[k])).join(","))].join("\r\n");
+}
+async function fetchDataset(name, purpose) {
+  const { data, error } = await sb.rpc("admin_export_data", { p_dataset: name, p_purpose: purpose });
+  if (error) throw new Error(friendlyMessage(error.message));
+  return data ?? [];
+}
+
+function mountDataTools(box) {
+  box.innerHTML = `
+    <section class="panel" style="margin-top:16px">
+      <h3 style="margin:0 0 4px">Backup, export and import</h3>
+      <p class="small muted" style="margin:0 0 12px">Supabase also keeps its own automatic backups of the whole database (what is included depends on your Supabase plan: check <em>Database → Backups</em> in the Supabase dashboard). The tools below make a copy <strong>you</strong> keep, and let you restore the lists and settings that are safe to restore. Every use is saved in Activity.</p>
+      <div id="dt-msg" class="alert" hidden role="status"></div>
+
+      <h4 style="margin:12px 0 4px">1. Backup</h4>
+      <label class="small"><input type="checkbox" id="bk-personal"> Also include people’s data (names, emails, phones, bookings, contact messages). Keep that file private.</label>
+      <div class="btn-row" style="margin-top:8px"><button class="btn btn-sm" id="bk-go">Download backup</button></div>
+
+      <h4 style="margin:18px 0 4px">2. Export one list</h4>
+      <div class="toolbar"><select id="ex-set" aria-label="What to export">${Object.entries(DATASETS).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+        <select id="ex-fmt" aria-label="Format"><option value="csv">CSV (opens in Excel)</option><option value="json">JSON</option></select>
+        <button class="btn btn-sm btn-outline" id="ex-go">Export</button></div>
+
+      <h4 style="margin:18px 0 4px">3. Import / restore</h4>
+      <p class="small muted" style="margin:0 0 8px">Choose a backup or export file made here. Only <strong>${RESTORABLE.map((k) => DATASETS[k]).join(", ")}</strong> can be restored; the rest of a backup is ignored. Nothing is changed if any row is invalid.</p>
+      <input type="file" id="im-file" accept=".json,application/json" aria-label="Backup file">
+      <div id="im-preview" class="small" style="margin-top:8px"></div>
+      <div class="field" id="im-reason-box" hidden style="margin-top:8px"><label for="im-reason">Reason <span class="muted small">(saved in the activity log)</span></label><textarea id="im-reason" rows="2" maxlength="500"></textarea></div>
+      <div class="btn-row" style="margin-top:8px"><button class="btn btn-sm" id="im-go" disabled>Restore from file</button></div>
+    </section>`;
+  const msg = box.querySelector("#dt-msg");
+  const busy = (b, on) => { b.disabled = on; };
+
+  box.querySelector("#bk-go").onclick = async (e) => {
+    const b = e.target; busy(b, true); showMessage(msg, "");
+    try {
+      const names = Object.keys(DATASETS).filter((k) => !PERSONAL.includes(k) || box.querySelector("#bk-personal").checked);
+      const datasets = {};
+      for (const n of names) datasets[n] = await fetchDataset(n, "backup");
+      saveFile(`wasel-backup-${stamp()}.json`, JSON.stringify({ format: "wasel-backup", version: 1, created_at: new Date().toISOString(), datasets }, null, 2), "application/json");
+      showMessage(msg, `Backup downloaded (${names.map((n) => `${DATASETS[n]}: ${datasets[n].length}`).join(", ")}). Keep it somewhere safe.`, "ok");
+    } catch (ex) { showMessage(msg, ex.message); }
+    busy(b, false);
+  };
+
+  box.querySelector("#ex-go").onclick = async (e) => {
+    const b = e.target; busy(b, true); showMessage(msg, "");
+    try {
+      const set = box.querySelector("#ex-set").value, fmt = box.querySelector("#ex-fmt").value;
+      const rows = await fetchDataset(set, "export");
+      if (fmt === "csv") saveFile(`wasel-${set}-${stamp()}.csv`, toCsv(rows), "text/csv");
+      else saveFile(`wasel-${set}-${stamp()}.json`, JSON.stringify({ format: "wasel-export", version: 1, dataset: set, created_at: new Date().toISOString(), rows }, null, 2), "application/json");
+      showMessage(msg, `${DATASETS[set]} exported: ${rows.length} row${rows.length === 1 ? "" : "s"}.`, "ok");
+    } catch (ex) { showMessage(msg, ex.message); }
+    busy(b, false);
+  };
+
+  let parsed = null;
+  box.querySelector("#im-file").onchange = async (e) => {
+    parsed = null; box.querySelector("#im-go").disabled = true; box.querySelector("#im-reason-box").hidden = true; showMessage(msg, "");
+    const prev = box.querySelector("#im-preview"); prev.textContent = "";
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 5 * 1024 * 1024) return showMessage(msg, "That file is too big (limit 5 MB).");
+    try {
+      const j = JSON.parse(await f.text());
+      const sets = j?.format === "wasel-backup" ? j.datasets : j?.format === "wasel-export" && j.dataset ? { [j.dataset]: j.rows } : null;
+      if (!sets || typeof sets !== "object") throw new Error("not a Wasel file");
+      const usable = Object.entries(sets).filter(([k, v]) => RESTORABLE.includes(k) && Array.isArray(v) && v.length);
+      const ignored = Object.keys(sets).filter((k) => !usable.some(([u]) => u === k));
+      if (!usable.length) return showMessage(msg, "This file has nothing that can be restored (only the services list, contact details and fee settings can).");
+      parsed = usable;
+      prev.innerHTML = `<strong>Will be restored:</strong> ${usable.map(([k, v]) => `${esc(DATASETS[k])} (${v.length})`).join(", ")}.${ignored.length ? `<br><span class="muted">Ignored: ${ignored.map((k) => esc(DATASETS[k] ?? k)).join(", ")}.</span>` : ""}`;
+      box.querySelector("#im-reason-box").hidden = false; box.querySelector("#im-go").disabled = false;
+    } catch { showMessage(msg, "This is not a valid Wasel backup or export file (JSON)."); }
+  };
+
+  box.querySelector("#im-go").onclick = async (e) => {
+    if (!parsed) return;
+    const reason = box.querySelector("#im-reason").value.trim();
+    if (reason.length < 5) return showMessage(msg, "Please write a reason (at least 5 characters).");
+    if (!confirm("Restore these lists from the file? Existing items with the same name are updated; nothing is deleted.")) return;
+    const b = e.target; busy(b, true); showMessage(msg, "");
+    const done = [];
+    try {
+      for (const k of ["catalog", "contacts", "settings"]) {
+        const hit = parsed.find(([n]) => n === k); if (!hit) continue;
+        const { data, error } = await sb.rpc("admin_import_data", { p_dataset: k, p_rows: hit[1], p_reason: reason });
+        if (error) throw new Error(`${DATASETS[k]}: ${friendlyMessage(error.message)}${done.length ? ` (already restored before this: ${done.join(", ")})` : ""}`);
+        done.push(`${DATASETS[k]}: ${data.inserted} added, ${data.updated} updated`);
+      }
+      showMessage(msg, `Restored. ${done.join(" · ")}.`, "ok");
+      box.querySelector("#im-file").value = ""; box.querySelector("#im-preview").textContent = ""; box.querySelector("#im-reason").value = ""; box.querySelector("#im-reason-box").hidden = true; parsed = null;
+    } catch (ex) { showMessage(msg, ex.message); busy(b, false); return; }
+    b.disabled = true;
+  };
+}
+
+// ---------------------------------------------------------------- start (kept at the END so every const above is ready)
+if (!user) {
+  location.replace("admin-login.html");
+} else {
+  await init(user);
 }

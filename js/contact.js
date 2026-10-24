@@ -1,4 +1,4 @@
-import { sb, renderChrome, showMessage, friendlyMessage, kickEmails } from "./app.js";
+import { sb, renderChrome, showMessage, friendlyMessage, kickEmails, loadSiteContacts, contactLink, esc } from "./app.js";
 
 const user = await renderChrome();
 const form = document.getElementById("contact-form");
@@ -37,3 +37,10 @@ form.addEventListener("submit", async (e) => {
   done.querySelector("strong").textContent = email;
   form.after(done);
 });
+
+// "Reach us directly": the details the main admin keeps up to date
+const reach = await loadSiteContacts();
+if (reach.length) {
+  document.getElementById("reach-box").hidden = false;
+  document.getElementById("reach-list").innerHTML = reach.map((x) => `<li><strong>${esc(x.label)}</strong><br>${contactLink(x)}</li>`).join("");
+}

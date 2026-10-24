@@ -1,7 +1,8 @@
 import { mountAreaEditor } from "./areas.js";
 import { mountProviderForm } from "./provider-form.js";
-import { mountDocs, mountDocQueue, uploadDoc } from "./docs.js";
+import { mountDocs, mountDocQueue, uploadDoc, uploadDocWithId, removeDocById } from "./docs.js";
 import { chatBox, mountChats, mountWorkPhotos, lastHour, mapsUrl } from "./serviceday.js";
+import { photoFromCamera, setInputFile } from "./capture.js";
 import { getRole, callFunction, kickEmails, sb, renderChrome, esc, money, formatDateTime, params, showMessage, CATEGORIES, categoryLabel, PHOTO_BUCKET, MAX_PHOTOS, sortPhotos, photoUrl, prepareImage , friendlyMessage, getSettings, pct, dollars, icon, adoptTabs } from "./app.js";
 
 const TZ = "America/Chicago";
@@ -108,7 +109,7 @@ async function tabOverview(provider, body) {
     [services.length > 0, "Add your first service", "provider.html?tab=services"],
     [services.length > 0 && services.every((s) => withPhotos.has(s.id)), "Add photos to every service", "provider.html?tab=services"],
     [provider.areas.length > 0, "Choose the areas you serve", "provider.html?tab=profile"],
-    [payoutOn, "Set up payouts to get paid", "provider.html?tab=profile"],
+    [payoutOn, "Set up payouts to get paid", "provider.html?tab=profile#payout-box"],
   ];
   if (provider.status === "pending") {
     const { data: dk } = await sb.from("provider_documents").select("kind").eq("provider_id", provider.id).is("service_id", null);
@@ -123,14 +124,14 @@ async function tabOverview(provider, body) {
   body.innerHTML = `
     ${promo}
     <div class="stats">
-      <div class="stat"><div class="num">${todays.length}</div><div class="lbl">Today's jobs</div></div>
-      <div class="stat"><div class="num">${pending.length}</div><div class="lbl">New requests</div></div>
-      <div class="stat stat-accent"><div class="num">${money(earned)}</div><div class="lbl">Earned this month</div></div>
-      <div class="stat"><div class="num">${provider.review_count ? "★ " + Number(provider.rating).toFixed(1) : "—"}</div><div class="lbl">${provider.review_count ? `Rating (${provider.review_count})` : "No reviews yet"}</div></div>
+      <a class="stat stat-link" href="provider.html?tab=bookings#upcoming"><div class="num">${todays.length}</div><div class="lbl">Today's jobs</div></a>
+      <a class="stat stat-link" href="provider.html?tab=bookings#new"><div class="num">${pending.length}</div><div class="lbl">New requests</div></a>
+      <a class="stat stat-link stat-accent" href="provider.html?tab=bookings#history"><div class="num">${money(earned)}</div><div class="lbl">Earned this month</div></a>
+      <a class="stat stat-link" href="provider.html?tab=profile"><div class="num">${provider.review_count ? "★ " + Number(provider.rating).toFixed(1) : "—"}</div><div class="lbl">${provider.review_count ? `Rating (${provider.review_count})` : "No reviews yet"}</div></a>
     </div>
     <div class="ov-grid">
       <div class="panel"><h3 style="margin:0 0 4px">Today's schedule</h3><p class="hint" style="margin:0 0 12px">Confirmed and in-progress jobs for today.</p>
-        ${todays.length ? todays.map((b) => `<div class="sched"><strong>${esc(time(b.scheduled_at))}</strong><span>${esc(b.customer?.full_name || "Customer")} · ${esc(b.service?.name ?? "Service")}</span>${pill(b.status, BOOKING_LABEL[b.status])}</div>`).join("") : `<div class="muted small">Nothing scheduled for today.</div>`}
+        ${todays.length ? todays.map((b) => `<a class="sched" href="provider.html?tab=bookings#upcoming"><strong>${esc(time(b.scheduled_at))}</strong><span>${esc(b.customer?.full_name || "Customer")} · ${esc(b.service?.name ?? "Service")}</span>${pill(b.status, BOOKING_LABEL[b.status])}</a>`).join("") : `<div class="muted small">Nothing scheduled for today.</div>`}
         ${pending.length ? `<p style="margin:16px 0 0"><a class="btn btn-sm" href="provider.html?tab=bookings">Review ${pending.length} new request${pending.length > 1 ? "s" : ""}</a></p>` : ""}
       </div>
       <div class="panel"><h3 style="margin:0 0 4px">Get set up</h3>
@@ -174,16 +175,17 @@ async function tabBookings(provider, body) {
 
   body.innerHTML = `
     <div class="stats">
-      <div class="stat"><div class="num">${pending.length}</div><div class="lbl">New requests</div></div>
-      <div class="stat"><div class="num">${todayCount}</div><div class="lbl">Today's jobs</div></div>
-      <div class="stat"><div class="num">${done.length}</div><div class="lbl">Completed jobs</div></div>
-      <div class="stat stat-accent"><div class="num">${money(revenue)}</div><div class="lbl">Earned (after fees)</div></div>
+      <a class="stat stat-link" href="#new"><div class="num">${pending.length}</div><div class="lbl">New requests</div></a>
+      <a class="stat stat-link" href="#upcoming"><div class="num">${todayCount}</div><div class="lbl">Today's jobs</div></a>
+      <a class="stat stat-link" href="#history"><div class="num">${done.length}</div><div class="lbl">Completed jobs</div></a>
+      <a class="stat stat-link stat-accent" href="#history"><div class="num">${money(revenue)}</div><div class="lbl">Earned (after fees)</div></a>
     </div>
-    ${section("New requests", pending, "No new requests right now.", card)}
-    ${section("Upcoming & in progress", upcoming, "Nothing scheduled.", card)}
-    ${section("History", history, "No past jobs yet.", card)}
+    ${section("New requests", pending, "No new requests right now.", card, "new")}
+    ${section("Upcoming & in progress", upcoming, "Nothing scheduled.", card, "upcoming")}
+    ${section("History", history, "No past jobs yet.", card, "history")}
     <div id="bk-msg" hidden></div>`;
   mountChats(body, provider.user_id, "Customer");
+  if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
   body.querySelectorAll("[data-workphotos]").forEach((el) => mountWorkPhotos(el, { userId: provider.user_id, bookingId: el.dataset.workphotos, editable: true }));
 
   body.addEventListener("submit", async (e) => {
@@ -247,8 +249,8 @@ function rateCustomer(b, mine) {
     <div class="rate-msg" hidden></div></form>`;
 }
 
-function section(title, rows, emptyText, card) {
-  return `<h2 class="section-title">${esc(title)} (${rows.length})</h2>` +
+function section(title, rows, emptyText, card, id = "") {
+  return `<h2 class="section-title"${id ? ` id="${id}"` : ""}>${esc(title)} (${rows.length})</h2>` +
     (rows.length ? rows.map((r) => card(r)).join("") : `<div class="empty" style="margin-top:12px;padding:20px">${esc(emptyText)}</div>`);
 }
 
@@ -261,7 +263,7 @@ function payoutLine(b, pay, payoutOn) {
   if (pay.payout_status === "processing") return `<div class="muted small" style="margin-top:10px">Sending your payout…</div>`;
   if (pay.problem_status === "open") return `<div class="alert alert-error" style="margin-top:10px">The customer reported a problem with this job. Your payout is on hold until Wasel support reviews it.</div>`;
   if (!pay.confirmed && pay.auto_release_at && new Date(pay.auto_release_at) > new Date()) return `<div class="muted small" style="margin-top:10px">Waiting for the customer to confirm the job is done. If they do not reply, it is confirmed automatically on ${esc(new Date(pay.auto_release_at).toLocaleDateString(window.waselLocale, { timeZone: TZ, month: "short", day: "numeric" }))} and your payout is sent.</div>`;
-  return `<div class="small" style="margin-top:10px">${payoutOn ? "Payout ready to send." : 'Customer paid. <a class="link" href="provider.html?tab=profile">Set up your payout account</a> to receive ' + esc(money(b.provider_payout)) + "."} ${pay.payout_status === "failed" ? "The last attempt failed. " : ""}${payoutOn ? '<button class="btn btn-sm" data-payout>Send payout</button>' : ""}</div>`;
+  return `<div class="small" style="margin-top:10px">${payoutOn ? "Payout ready to send." : 'Customer paid. <a class="link" href="provider.html?tab=profile#payout-box">Set up your payout account</a> to receive ' + esc(money(b.provider_payout)) + "."} ${pay.payout_status === "failed" ? "The last attempt failed. " : ""}${payoutOn ? '<button class="btn btn-sm" data-payout>Send payout</button>' : ""}</div>`;
 }
 
 function bookingCard(b, pay, payoutOn, mi, cr, mine) {
@@ -423,11 +425,15 @@ async function tabServices(provider, body) {
   });
 
   // ----- upload photos (file picker)
-  body.addEventListener("click", (e) => {
+  body.addEventListener("click", async (e) => {
     const pick = e.target.closest("[data-pick]");
     if (!pick) return;
     const row = pick.closest(".upload-row");
-    row.querySelector(pick.dataset.pick === "camera" ? "[data-camera-input]" : "[data-files-input]")?.click();
+    if (pick.dataset.pick !== "camera") return row.querySelector("[data-files-input]")?.click();
+    // the camera: a live preview that proves it works; if it does not, the person is told why and can pick a file or skip
+    const note = pick.closest("[data-id]").querySelector(".photo-msg");
+    const file = await photoFromCamera((t) => showMessage(note, t, "warn"));
+    if (file) setInputFile(row.querySelector("[data-files-input]"), file);
   });
   body.addEventListener("change", async (e) => {
     const input = e.target.closest("[data-upload]");
@@ -539,7 +545,7 @@ function serviceCard(s) {
       <button type="button" class="btn btn-sm btn-outline" data-pick="files" ${full ? "disabled" : ""}>Choose from files</button>
       <button type="button" class="btn btn-sm btn-outline" data-pick="camera" ${full ? "disabled" : ""}>Take a photo</button>
       <input type="file" data-upload data-files-input accept="image/*" multiple hidden ${full ? "disabled" : ""} aria-label="Add photos to ${esc(s.name)} from your files">
-      <input type="file" data-upload data-camera-input accept="image/*" capture="environment" hidden ${full ? "disabled" : ""} aria-label="Take a photo for ${esc(s.name)}">
+      <span class="hint" style="flex-basis:100%;margin:0">Photos are optional: use the camera, pick a file, or skip and add them later.</span>
     </div>
     <div class="photo-msg" hidden></div>
     <form class="price-form" style="margin-top:16px">
@@ -633,13 +639,15 @@ function tabProfile(provider, body) {
     </dl>
     <div class="panel" style="margin-bottom:16px"><h3 style="margin:0 0 4px">Documents</h3>
       <p class="hint" style="margin:0 0 12px">Your ID and a license or proof of insurance. Wasel admins use them to review your application.</p><div id="docs-box"></div></div>
-    <div class="panel" style="margin-bottom:16px"><h3 style="margin:0 0 8px">Your plan</h3><div id="plan-box"><p class="muted loading">Loading…</p></div></div>
-    <div class="panel" style="margin-bottom:16px"><h3 style="margin:0 0 8px">Get paid</h3><div id="payout-box"><p class="muted loading">Loading…</p></div></div>
+    <div class="panel" id="plan-panel" style="margin-bottom:16px"><h3 style="margin:0 0 8px">Your plan</h3><div id="plan-box"><p class="muted loading">Loading…</p></div></div>
+    <div class="panel" id="payout-panel" style="margin-bottom:16px"><h3 style="margin:0 0 8px">Get paid</h3><div id="payout-box"><p class="muted loading">Loading…</p></div></div>
     <div class="panel" style="margin-bottom:16px"><h3 style="margin:0 0 4px">Service areas</h3>
       <p class="hint" style="margin:0 0 12px">The cities and ZIP codes where you work. Customers only see you when they search one of these places.</p>
       <div id="areas-box"></div><div id="areas-msg" hidden></div>
       <button class="btn btn-sm" id="areas-save" type="button" style="margin-top:12px">Save service areas</button></div>
+    ${provider.status === "approved" ? `<div class="panel" id="change-box" style="margin-bottom:16px"><p class="muted loading">Loading…</p></div>` : ""}
     <form id="profile-form" class="panel">
+      ${provider.status === "approved" ? `<div class="alert alert-warn" style="margin-bottom:16px">Your profile is approved. <strong>Changes are sent to Wasel for approval</strong> and appear on your public page once an admin accepts them. You can attach supporting documents (for example a new license).</div>` : ""}
       ${f("business_name", "Business name", "required maxlength=120")}
       <div class="field"><label>About your business</label><textarea name="description" rows="4">${esc(provider.description ?? "")}</textarea></div>
       <div class="row2">${f("phone", "Phone", "type=tel")}${f("email", "Business email", "type=email")}</div>
@@ -653,8 +661,10 @@ function tabProfile(provider, body) {
       <div class="field"><label>Languages (separated by commas)</label><input name="languages" value="${esc((provider.languages ?? []).join(", "))}"></div>
       <div class="field"><label>License or insurance <span class="muted small">(private, only admins see it)</span></label><textarea name="license_info" rows="2" maxlength="300" id="license-field" disabled></textarea></div>
       <p class="hint">Your phone, email, address, business type, services, experience, languages and website are visible to customers on your public page.</p>
+      ${provider.status === "approved" ? `<div class="field" style="margin-top:12px"><label>Why are you changing it? <span class="muted small">(optional, helps the admin)</span></label><textarea name="req_note" rows="2" maxlength="500"></textarea></div>
+      <div class="field"><label>Supporting documents <span class="muted small">(optional)</span></label><div id="change-docs"></div></div>` : ""}
       <div id="pf-msg" hidden></div>
-      <button class="btn" type="submit" style="margin-top:16px">Save profile</button>
+      <button class="btn" type="submit" style="margin-top:16px">${provider.status === "approved" ? "Send changes for approval" : "Save profile"}</button>
     </form>`;
 
   mountDocs(document.getElementById("docs-box"), { userId: user.id, providerId: provider.id, locked: provider.status === "approved" });
@@ -669,7 +679,12 @@ function tabProfile(provider, body) {
     showMessage(msg, areaEditor.get().length ? `Saved ${areaEditor.get().length} area${areaEditor.get().length > 1 ? "s" : ""}.` : "Saved. With no areas, customers cannot find you.", areaEditor.get().length ? "ok" : "warn");
   });
 
-  if (provider.status === "approved") { payoutCard(provider); planCard(provider); }
+  if (provider.status === "approved") {
+    Promise.all([payoutCard(provider), planCard(provider)]).then(() => {
+      const t = location.hash === "#payout-box" ? "payout-panel" : location.hash === "#plan-box" ? "plan-panel" : null;
+      if (t) { const el = document.getElementById(t); el?.scrollIntoView({ block: "start" }); el?.classList.add("flash"); }
+    });
+  }
   else document.getElementById("plan-box").innerHTML = `<p class="muted">Available once an admin approves your account.</p>`;
   if (provider.status !== "approved") document.getElementById("payout-box").innerHTML = `<p class="muted">Available once an admin approves your account.</p>`;
 
@@ -679,19 +694,25 @@ function tabProfile(provider, body) {
     box.value = data.license_info ?? ""; box.disabled = false;
   });
 
+  const approved = provider.status === "approved";
+  const changeDocs = approved ? mountDocQueue(document.getElementById("change-docs"), [["other", "Supporting document"]], { max: 4, hint: "These are only shown to the Wasel admins." }) : null;
+  if (approved) drawChangeBox(provider, changeDocs);
+
   document.getElementById("profile-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.target, msg = document.getElementById("pf-msg");
     const v = (n) => form[n].value.trim() || null;
     const cats = [...form.querySelectorAll("[name=cat]:checked")].map((x) => x.value);
     const langs = form.languages.value.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 8);
-    const { error } = await sb.from("provider_profiles").update({
+    const values = {
       business_name: form.business_name.value.trim(), description: v("description"), phone: v("phone"), email: v("email"),
       address: v("address"), city: v("city"), state: v("state"), zip_code: v("zip_code"),
       business_type: form.business_type.value || null, categories: cats.length ? cats : null,
       years_experience: form.years_experience.value === "" ? null : Number(form.years_experience.value),
       languages: langs.length ? langs : null, website: v("website"),
-    }).eq("user_id", user.id);
+    };
+    if (approved) return sendChange(provider, form, values, changeDocs, msg);
+    const { error } = await sb.from("provider_profiles").update(values).eq("user_id", user.id);
     if (error) return showMessage(msg, error.message);
     if (!form.license_info.disabled) {
       const { error: e2 } = await sb.from("provider_private").update({ license_info: v("license_info") }).eq("provider_id", provider.id);
@@ -699,6 +720,61 @@ function tabProfile(provider, body) {
     }
     showMessage(msg, "Saved.", "ok");
   });
+}
+
+// ---- change requests (approved providers): only the fields that really changed are sent
+const FIELD_LABEL = { business_name: "Business name", description: "About your business", phone: "Phone", email: "Business email", address: "Address", city: "City", state: "State", zip_code: "ZIP code", business_type: "I work as", categories: "Services you offer", years_experience: "Years of experience", languages: "Languages", website: "Website", license_info: "License or insurance" };
+const showVal = (k, val) => val == null || val === "" ? "(empty)" : Array.isArray(val) ? val.join(", ") : k === "business_type" ? (val === "company" ? "A company" : "An individual") : String(val);
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+async function sendChange(provider, form, values, queue, msg) {
+  const btn = form.querySelector("button[type=submit]");
+  const { data: pv } = await sb.from("provider_private").select("license_info").eq("provider_id", provider.id).maybeSingle();
+  const all = { ...values };
+  if (!form.license_info.disabled) all.license_info = form.license_info.value.trim() || null;
+  const current = { ...provider, license_info: pv?.license_info ?? null };
+  const changes = {};
+  for (const [k, val] of Object.entries(all)) if (!same(val, current[k] ?? null) && !(k === "categories" && !val && !current[k]?.length)) changes[k] = val === null ? (k === "categories" || k === "languages" ? [] : "") : val;
+  if (!Object.keys(changes).length) return showMessage(msg, "You have not changed anything yet.", "warn");
+  btn.disabled = true;
+  const uploaded = [];
+  for (const it of queue.items()) {
+    const r = await uploadDocWithId(user.id, provider.id, { kind: "other", file: it.file });
+    if (r.error) { for (const u of uploaded) await removeDocById(u.id, u.path); btn.disabled = false; return showMessage(msg, r.error); }
+    uploaded.push(r);
+  }
+  const { error } = await sb.rpc("submit_provider_change", { p_changes: changes, p_note: form.req_note.value.trim() || null, p_doc_ids: uploaded.map((u) => u.id) });
+  btn.disabled = false;
+  if (error) { for (const u of uploaded) await removeDocById(u.id, u.path); return showMessage(msg, friendlyMessage(error.message)); }
+  queue.clear(); form.req_note.value = "";
+  showMessage(msg, "Sent. Wasel will review your changes. Your public profile stays as it is until an admin approves them.", "ok");
+  await drawChangeBox(provider, queue);
+  document.getElementById("change-box")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function drawChangeBox(provider) {
+  const box = document.getElementById("change-box");
+  if (!box) return;
+  const { data, error } = await sb.from("provider_change_requests").select("id, status, changes, note, admin_note, created_at, reviewed_at").eq("provider_id", provider.id).order("created_at", { ascending: false }).limit(5);
+  if (error) { box.innerHTML = `<div class="alert alert-error">${esc(friendlyMessage(error.message))}</div>`; return; }
+  const rows = data ?? [];
+  const when = (iso) => new Date(iso).toLocaleDateString(window.waselLocale, { timeZone: TZ, month: "short", day: "numeric" });
+  const label = { pending: ["pending", "Waiting for Wasel"], approved: ["completed", "Approved"], rejected: ["declined", "Not approved"], cancelled: ["draft", "Cancelled"] };
+  const item = (r) => `<div class="change-item" data-id="${esc(r.id)}" style="border-top:1px solid var(--line);padding:12px 0">
+      <div>${pill(...label[r.status])} <span class="muted small">Sent ${esc(when(r.created_at))}${r.reviewed_at ? ` · decided ${esc(when(r.reviewed_at))}` : ""}</span></div>
+      <ul class="small" style="margin:8px 0 0 18px">${Object.entries(r.changes).map(([k, val]) => `<li><strong>${esc(FIELD_LABEL[k] ?? k)}:</strong> ${esc(showVal(k, val))}</li>`).join("")}</ul>
+      ${r.note ? `<div class="small muted" style="margin-top:6px">Your note: ${esc(r.note)}</div>` : ""}
+      ${r.admin_note ? `<div class="small" style="margin-top:6px"><strong>Wasel:</strong> ${esc(r.admin_note)}</div>` : ""}
+      ${r.status === "pending" ? `<button class="btn btn-sm btn-outline" data-cancel-change style="margin-top:8px">Cancel this request</button>` : ""}</div>`;
+  box.innerHTML = `<h3 style="margin:0 0 4px">Profile change requests</h3>` + (rows.length
+    ? `<p class="hint" style="margin:0 0 4px">Changes to an approved profile are reviewed by Wasel before they go live.</p>${rows.map(item).join("")}<div id="change-msg" hidden></div>`
+    : `<p class="hint" style="margin:0">Nothing sent yet. Use the form below to ask for a change.</p>`);
+  box.querySelectorAll("[data-cancel-change]").forEach((b) => b.addEventListener("click", async () => {
+    b.disabled = true;
+    const { error: e2 } = await sb.rpc("cancel_provider_change", { p_id: b.closest("[data-id]").dataset.id });
+    if (e2) { b.disabled = false; return showMessage(document.getElementById("change-msg"), friendlyMessage(e2.message)); }
+    await drawChangeBox(provider);
+  }));
 }
 
 // ============================================================ start (kept at the END so every const above is ready)

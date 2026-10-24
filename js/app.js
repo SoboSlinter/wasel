@@ -244,6 +244,11 @@ export async function renderChrome() {
       © ${new Date().getFullYear()} Wasel — find trusted local services.
       <span class="foot-links"><a href="about.html">About</a> · <a href="contact.html">Contact</a> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="provider-login.html">Provider log in</a> · <a href="admin-login.html">Admin</a></span>
     </div></footer>`;
+  // contact details the main admin keeps (shown in the footer; the Contact page lists them too)
+  loadSiteContacts().then((rows) => {
+    const el = document.querySelector(".site-footer .container");
+    if (rows.length && el && !el.querySelector(".foot-contact")) el.insertAdjacentHTML("beforeend", `<div class="foot-contact">${rows.filter((c) => ["email", "phone", "whatsapp"].includes(c.kind)).map((c) => `<span>${esc(c.label)}: ${contactLink(c)}</span>`).join(" · ")}</div>`);
+  });
   setupThemeToggle();
   setupSidebar();
 
@@ -339,3 +344,55 @@ window.addEventListener("unhandledrejection", crashBanner);
 window.addEventListener("error", (e) => { if (e.error) crashBanner(); }); // a script that throws while the page loads
 window.addEventListener("offline", () => document.body.classList.add("is-offline"));
 window.addEventListener("online", () => document.body.classList.remove("is-offline"));
+
+
+// ---------- contact details of the team (edited by the main admin) ----------
+export async function loadSiteContacts() {
+  try {
+    const { data, error } = await sb.from("site_contacts").select("id, kind, label, value, sort_order").order("sort_order").order("created_at");
+    return error ? [] : (data ?? []);
+  } catch { return []; }
+}
+// one safe link or text for a contact row (only mailto:, tel: and https: links are ever created)
+export function contactLink(c) {
+  const v = esc(c.value);
+  if (c.kind === "email") return `<a class="link" href="mailto:${esc(encodeURI(c.value))}">${v}</a>`;
+  if (c.kind === "phone" || c.kind === "whatsapp") return `<a class="link" href="tel:${esc(String(c.value).replace(/[^0-9+]/g, ""))}">${v}</a>`;
+  if ((c.kind === "website" || c.kind === "social") && /^https?:\/\//i.test(c.value)) return `<a class="link" href="${esc(c.value)}" rel="noopener noreferrer" target="_blank">${v}</a>`;
+  return v;
+}
+
+
+// ---------- "it worked" / "sorry, it did not work" messages that stay long enough to read ----------
+// ok: shows a success card and, when `next` is true, waits long enough to read it (about 3 words a second)
+// before resolving. A failure card never closes by itself: the person closes it. Resolves when it closes.
+export function showOutcome({ ok, title, text = "", wait = true, continueLabel = "Continue", closeLabel = "Close" }) {
+  return new Promise((resolve) => {
+    document.querySelector(".outcome-dialog")?.remove();
+    const words = `${title} ${text}`.trim().split(/\s+/).length;
+    let left = ok && wait ? Math.max(6, Math.ceil(words / 3) + 3) : 0;
+    const dlg = document.createElement("dialog");
+    dlg.className = `outcome-dialog ${ok ? "is-ok" : "is-bad"}`;
+    dlg.setAttribute("role", ok ? "status" : "alertdialog");
+    dlg.setAttribute("aria-labelledby", "outcome-title");
+    dlg.innerHTML = `<div class="outcome-icon" aria-hidden="true">${ok ? "✓" : "!"}</div>
+      <h2 id="outcome-title">${esc(title)}</h2>${text ? `<p>${esc(text)}</p>` : ""}
+      ${left ? `<p class="small muted" data-count></p>` : ""}
+      <div class="btn-row" style="justify-content:center"><button type="button" class="btn" data-go>${esc(ok && wait ? continueLabel : closeLabel)}</button></div>`;
+    document.body.appendChild(dlg);
+    let timer = null;
+    const done = () => { clearInterval(timer); dlg.close(); dlg.remove(); resolve(); };
+    dlg.querySelector("[data-go]").onclick = done;
+    dlg.addEventListener("cancel", (e) => { e.preventDefault(); done(); });
+    if (left) {
+      const c = dlg.querySelector("[data-count]");
+      const tick = () => { c.textContent = `Continuing in ${left} second${left === 1 ? "" : "s"}…`; };
+      tick();
+      timer = setInterval(() => { left -= 1; if (left <= 0) return done(); tick(); }, 1000);
+      // someone who is still reading can stop the countdown by touching the card
+      dlg.addEventListener("pointerdown", () => { clearInterval(timer); c.textContent = "Take your time. Press Continue when you are ready."; }, { once: true });
+    }
+    dlg.showModal();
+    dlg.querySelector("[data-go]").focus();
+  });
+}

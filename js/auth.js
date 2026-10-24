@@ -1,4 +1,4 @@
-import { sb, renderChrome, params, safeNext, showMessage, getRole } from "./app.js";
+import { showOutcome, sb, renderChrome, params, safeNext, showMessage, getRole } from "./app.js";
 
 // Used by login.html and signup.html (the form's data-mode says which).
 const user = await renderChrome();
@@ -123,18 +123,27 @@ form.addEventListener("submit", async (e) => {
     password,
     options: { data: { full_name: form.full_name.value.trim(), lang: window.waselLang === "es" ? "es" : "en" }, emailRedirectTo: target.href },
   });
-  if (error) { reset(); return showMessage(msg, friendly(error)); }
+  if (error) {
+    reset();
+    showMessage(msg, friendly(error));
+    return showOutcome({ ok: false, title: "Sorry, we could not create your account", text: `${friendly(error)} Please check your details and try again. If it keeps happening, contact us.` });
+  }
 
   // With email confirmation on, an already-registered address comes back as a user with no identities.
   if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
     reset();
-    return showMessage(msg, "An account with this email already exists. Log in instead, or use “Forgot password”.");
+    showMessage(msg, "An account with this email already exists. Log in instead, or use “Forgot password”.");
+    return showOutcome({ ok: false, title: "Sorry, we could not create your account", text: "An account with this email already exists. Log in instead, or use “Forgot password”." });
   }
-  if (data.session) return location.assign(portal === "provider" && !rawNext ? "provider.html" : next); // confirmation is off: already signed in
+  if (data.session) { // confirmation is off: already signed in
+    await showOutcome({ ok: true, title: "Your account was created successfully", text: "Welcome to Wasel. We are taking you to your account." });
+    return location.assign(portal === "provider" && !rawNext ? "provider.html" : next);
+  }
 
   reset();
   // hide the fields but keep the message area (it lives inside the form)
   for (const el of form.querySelectorAll(".field, button[type=submit]")) el.hidden = true;
   showMessage(msg, `We sent a confirmation link to ${email}. Click it to finish signing up.`, "ok");
   offerResend(email);
+  showOutcome({ ok: true, wait: false, title: "Your account was created successfully", text: `One last step: we sent a confirmation link to ${email}. Open it to finish signing up. Check your spam folder if you do not see it.` });
 });

@@ -71,7 +71,7 @@ async function init(user) {
     const problemOpen = b.status === "completed" && b.problem_status === "open";
     const autoDate = b.completed_at ? new Date(new Date(b.completed_at).getTime() + 72 * 3600e3).toLocaleDateString(window.waselLocale, { month: "short", day: "numeric" }) : "";
     return `
-    <article class="card booking" data-id="${esc(b.id)}">
+    <article class="card booking" data-id="${esc(b.id)}" id="b-${esc(b.id)}">
       <div class="top">
         <div>
           <h3>${b.service ? `<a href="service.html?id=${encodeURIComponent(b.service.id)}">${esc(b.service.name)}</a>` : "Service"}</h3>

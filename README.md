@@ -35,7 +35,7 @@ The key is public by design. Data protection is the job of the database rules (R
 | `supabase/migrations/` | The database, in order (001 to 025). `supabase/schema.sql` is the same thing in one file |
 | `supabase/functions/` | Server functions: payments, payouts, refunds, emails (need Stripe and Resend keys) |
 | `supabase/seed.sql`, `supabase/sample-data-hosted.sql` | Sample data for local and hosted tests |
-| `scripts/` | `db-security-test.sql` (755 checks), `db-admin-test.sql` (main admin and invites), helpers for the local database |
+| `scripts/` | `db-security-test.sql` (755 checks), `db-admin-test.sql` (main admin and invites), `db-permissions-test.sql` (42 checks: admin roles, contact details, backup/import), `db-provider-change-test.sql` (36 checks: provider profile change requests), helpers for the local database |
 
 Shared helpers in `js/`: `app.js` (Supabase client, header and footer, `esc()`, messages, categories), `areas.js` (service-area editor),
 `docs.js` (document upload queue), `provider-form.js` (the merged provider sign-up form), `i18n.js` and `i18n-es.js` (English and Spanish).

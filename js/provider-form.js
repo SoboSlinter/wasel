@@ -2,7 +2,7 @@
 // and by provider.html (a signed-in person who is not a provider yet: no account step).
 import { mountAreaEditor } from "./areas.js";
 import { mountDocQueue, uploadDoc } from "./docs.js";
-import { sb, esc, showMessage, CATEGORIES, friendlyMessage } from "./app.js";
+import { sb, esc, showMessage, CATEGORIES, friendlyMessage, showOutcome } from "./app.js";
 
 const LANGS = ["English", "Arabic", "Spanish"];
 const REFERRALS = [["", "Choose…"], ["friend", "A friend or family"], ["social", "Social media"], ["search", "Online search"], ["flyer", "Flyer or in person"], ["other", "Other"]];
@@ -268,14 +268,17 @@ export function mountProviderForm(root, { user = null, afterDone }) {
           document.getElementById("steps").hidden = true;
           showMessage(msg, `We sent a confirmation link to ${email}. Click it, log in, and you will come back to this form with your details already filled in. You only need to add your documents.`, "ok");
           offerResend(email);
+          showOutcome({ ok: true, wait: false, title: "Your account was created successfully", text: `We sent a confirmation link to ${email}. Click it, log in, and you will come back to this form with your details already filled in. You only need to add your documents.` });
           return;
         }
       }
       await applyAsProvider(account);
+      await showOutcome({ ok: true, title: "Your provider account was created successfully", text: "We received your application. Our team will review it and email you. You can follow the status on your provider page." });
       afterDone();
     } catch (err) {
       btn.disabled = false; btn.textContent = label;
       showMessage(msg, err.message);
+      showOutcome({ ok: false, title: "Sorry, we could not finish your application", text: `${friendlyMessage(err.message)} Your answers are still on this page, so you can fix it and press the button again.` });
     }
   });
 }

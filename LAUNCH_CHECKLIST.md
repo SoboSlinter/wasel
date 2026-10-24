@@ -7,7 +7,7 @@ Front end and back end (`supabase/`).
 - [ ] Decide the final site name and domain.
 
 ## 1. Back end
-- [ ] Database: `supabase/schema.sql` (or migrations 001 to 025) applied to the project. Run `scripts/db-security-test.sql` and `scripts/db-admin-test.sql` on a fresh copy first.
+- [ ] Database: `supabase/schema.sql` (or migrations 001 to 028) applied to the project. Run `scripts/db-security-test.sql`, `scripts/db-admin-test.sql` and `scripts/db-permissions-test.sql` and `scripts/db-provider-change-test.sql` on a fresh copy first. Camera capture needs HTTPS (works on the real site, and on localhost).
 - [ ] Make yourself the main admin (SQL at the end of `025_super_admin_invites.sql`), then invite other admins from the Admins tab.
 - [ ] Server functions deployed and their keys set (Stripe, Resend): follow `supabase/SETUP_PAYMENTS_EMAIL.md`. Payments and emails do not work without them.
 - [ ] Auth: email confirmation on, leaked-password protection on, Site URL and redirect URLs set.
